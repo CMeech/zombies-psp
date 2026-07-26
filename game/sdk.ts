@@ -45,7 +45,7 @@ export interface BotsConfig {
   damageMax: number;
 }
 
-interface NativeStrike {
+export interface NativeStrike {
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
   loadMap?(index: number): void;

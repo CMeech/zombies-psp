@@ -15,7 +15,9 @@
 </p>
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
-The same game targets desktop (wgpu), PSP (sceGu), and PS Vita (vita2d/GXM); the bottom shot is the real PSP running at a locked 60 fps.</em></p>
+The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
+(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot is the real PSP
+running at a locked 60 fps.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -37,6 +39,9 @@ crates/openstrike-psp    the PSP build: an EBOOT on pocket3d-gu (sceGu) and
                          the PocketJS PSP host — same surfaces, same bundle
 crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
                          pocket3d-vita + PocketJS's vita2d/GXM host
+crates/openstrike-symbian
+                         the E7 app core: the shared simulation + Pocket3D
+                         GLES2, statically linked into PocketJS's Qt host
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
@@ -77,11 +82,13 @@ toolchains. The vendored PocketJS manifest pins the organization-owned
 personal-fork checkout is required.
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
-requires the draw list, baked glyphs, buttons and the left analog API at a
-480x272 logical `integer-fit` viewport; it does not claim touch, dynamic text,
-or a stock Pocket3D capability. Pocket3D remains an extension implemented by
-OpenStrike's custom native hosts. Every target build validates that manifest,
-runs the ordinary reachable TypeScript check, writes
+requires baked glyphs and buttons, and uses the left analog API when the
+target provides it. PSP/Vita select its 480x272 fixed `integer-fit` viewport;
+the Nokia E7 selects the same manifest's `display.viewport.live` enhancement
+and 640x360-through-360x640 dynamic viewport. Pocket3D remains an extension
+implemented by OpenStrike's custom native hosts rather than a private
+manifest channel. Every target build validates its manifest, runs the
+ordinary reachable TypeScript check, writes
 `.pocket/<target>/plan.json`, and delegates compilation to `pocket compile`.
 The public `@pocketjs/framework/manifest` helpers verify the build-plan
 checksum, project stable `HostBuildInputs`, and generate Cargo's target, host
@@ -89,6 +96,75 @@ ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
+
+## Nokia E7: full 3D OpenStrike
+
+The E7 build is the real FPS, not the former top-down substitute. Its
+application-specific static core source-shares `openstrike-core`, installs the
+native `strike` surface before the canonical `game/openstrike.tsx` bundle is
+evaluated, loads the selected cooked map on demand, and renders it through
+Pocket3D's OpenGL ES 2 backend. The depth-tested world, bots, weapon viewmodel,
+muzzle effects, collision, round logic, and PocketJS JSX HUD all run in the
+same app.
+
+The Qt host owns QuickJS, the GL context, and presentation. The native
+extension renders the 3D scene first; PocketJS composites the retained HUD
+over it. At the E7 host's 30 Hz presentation rate the simulation advances two
+fixed 60 Hz ticks per frame. Rotation updates the camera aspect and live UI
+viewport without rebuilding the simulation, so an active match survives
+landscape/portrait changes.
+
+E7 keyboard controls:
+
+| Key | Action |
+| --- | --- |
+| W / A / S / D | move |
+| Arrow keys | look during play; select maps and dialog choices in menus |
+| Enter | deploy the selected map or confirm the selected dialog choice |
+| Enter or E | fire (Enter confirms the selected item while a menu is open) |
+| R | reload |
+| Space | jump |
+| Shift | walk |
+| Backspace or Home | open/close the return-to-menu dialog |
+
+The local E7 build produces one SIS containing the runtime and all eight
+locally supplied cooked maps: `cs_assault`, `cs_office`, `de_aztec`,
+`de_dust`, `de_dust2`, `de_inferno`, `de_nuke`, and `de_train`. Maps are
+installed as separate data files and loaded one at a time, so the 32 MiB
+process heap never holds the complete map set or duplicates it through
+QuickJS. Touch aiming is not implemented yet.
+
+Map and WAD data remain user-supplied. They, the generated P3D files, and the
+resulting map-bearing SIS must not be committed to this repository or
+published as a release artifact. `OPENSTRIKE_MAPS` may point to a source tree
+with `maps/*.bsp` and `support/*.wad`; otherwise the local default is
+`~/Downloads/cs-maps-20260705-1836`. The build cooks and verifies the eight
+maps into ignored `dist/maps/*.p3d`. A complete set of already cooked,
+canonically verified P3D files is also a valid local build input when the
+copyrighted BSP/WAD source tree is unavailable.
+
+```sh
+# Hermetic manifest/PAK/tooling tests: no Docker, map data, or device needed.
+bun run test:symbian
+
+# Cook/verify all eight local maps and validate the guest plus map catalogue.
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun run test:symbian-bundle
+
+# Build the pinned native core and one independently installable, eight-map SIS.
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun run build:symbian
+```
+
+The pinned `vendor/pocketjs` checkout is authoritative.
+`POCKETJS_ROOT=/path/to/pocketjs` (or `--pocketjs-root`) is available only for
+guest-only compatibility checks. A native build rejects any checkout other
+than `vendor/pocketjs`, because the Rust dependency graph and Qt packager must
+use the same pinned ABI. The full command uses PocketJS's exact Symbian
+nightly, 30 Hz host rate, custom target JSON, and
+`build-std=core,alloc,compiler_builtins`, then passes the resulting static
+library through the toolchain's explicit `--core-library` boundary. It writes
+`dist/symbian/openstrike.sis`, validates the cooked map through Pocket3D's
+canonical Rust reader, and revalidates the packaged JS/PAK against that exact
+map; installation and visual acceptance still require a real E7.
 
 ### Map data
 
