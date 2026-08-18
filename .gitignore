@@ -1,0 +1,35 @@
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and test output
+*.log
+coverage/
+
+# Rust build output
+target/
+
+# JavaScript dependencies and build output
+node_modules/
+dist/
+
+# PSP and emulator-generated output
+*.PBP
+*.SFO
+*.elf
+*.prx
+*.iso
+*.cso
+ppsspp.log
