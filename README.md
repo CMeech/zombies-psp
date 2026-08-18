@@ -4,6 +4,8 @@ Working repository scaffold for an original PSP round-based survival FPS.
 
 This project is intended to extend OpenStrike and the PocketJS runtime family. It will use a native Rust simulation/rendering core for frame-critical work and a PocketJS guest for rules, configuration, UI, and other iteration-heavy behavior.
 
+The finished game is intended to be a free, community-led, open-source homebrew project, not a commercial product.
+
 ## Current phase
 
 Planning and development-loop design only. No implementation code or third-party game assets are included yet.
@@ -20,6 +22,8 @@ Planning and development-loop design only. No implementation code or third-party
 ## Repository map
 
 - `docs/` — architecture, decisions, research, and workflow.
+- `docs/ROADMAP.md` — milestone gates from upstream selection through release readiness.
+- `docs/research/upstream-audit-2026-08-18.md` — selected upstream revisions, licences, and source-tree findings.
 - `crates/` — future Rust runtime/core extensions.
 - `game/` — future PocketJS game rules and HUD.
 - `assets/` — original source assets and cooked target assets.

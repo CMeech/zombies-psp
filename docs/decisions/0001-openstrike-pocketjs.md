@@ -1,6 +1,6 @@
 # ADR 0001: Extend OpenStrike and PocketJS
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-18
 
 ## Context

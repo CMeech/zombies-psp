@@ -16,6 +16,8 @@ If the repository is attached rather than locally available, attach or select th
 
 Create an original round-based survival FPS for PSP homebrew. The gameplay loop may be inspired by established survival shooters, but the project must have original branding, environments, characters, sprites, audio, and other distributable assets.
 
+The project is intended to remain free, community-led, and open source. It is not being developed for sale. This describes the project's distribution policy; the final source licence still needs to be selected and must remain compatible with the permissively licensed upstream source.
+
 The visual direction is a true 3D environment with Doom-era presentation techniques:
 
 - BSP-based 3D levels
@@ -110,6 +112,15 @@ Use PocketJS DevTools and PSPLINK for one-command build/relaunch, logs, screensh
 
 The repository is a documentation-only scaffold. It currently contains no implementation code and no third-party game assets.
 
+Milestone 1 is complete. The upstream audit selected the following immutable revisions:
+
+- OpenStrike: `fcfe93e9b2821524d6f6e834d15939cb18bc6e3d`
+- PocketJS/Pocket3D: `5bfaff7091e63a1cd93fe46fd5a4f8b61b46b335`
+- quickjs-rs: `0fc946fb670c0c29bc0135f510bcb0f595415a61`
+- rust-psp: `2cbaf8c9bc72569c76240a1d9743de10731e5f6b`
+
+ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. The upstream source has not yet been integrated, built, or run locally; those tasks belong to Milestone 2.
+
 - `AGENTS.md` — constraints and working agreement for coding agents.
 - `README.md` — project overview.
 - `docs/architecture/README.md` — proposed native/guest split.
@@ -128,15 +139,15 @@ The empty implementation directories are provisional. Do not force them onto Ope
 
 Do these in order:
 
-1. Inspect the current OpenStrike and PocketJS repositories and their licence files.
-2. Select and record exact upstream commit revisions.
-3. Decide whether to fork OpenStrike directly or create a thin repository that vendors/pins it. The current preference is a direct fork because the native FPS surface will change substantially.
-4. Compare this scaffold with OpenStrike's actual directory and workspace layout.
-5. Move these planning documents into the chosen repository without overwriting upstream documentation.
-6. Build unmodified OpenStrike on macOS.
-7. Run at least one deterministic headless scenario.
-8. Build its PSP EBOOT and run its existing PPSSPP journey.
-9. Record baseline build time, relaunch time, frame time, and memory before modifications.
+1. Add the official OpenStrike repository as the `openstrike` remote.
+2. Integrate the selected OpenStrike commit while preserving both histories and making no product changes.
+3. Preserve the exact PocketJS, quickjs-rs, and rust-psp submodule pins.
+4. Reconcile the scaffold with the upstream layout and move planning documents under `docs/project/`.
+5. Build unmodified OpenStrike on macOS.
+6. Run at least one deterministic headless scenario using local, uncommitted map data.
+7. Build its PSP EBOOT and run its existing PPSSPP journey.
+8. Record baseline build time, relaunch time, frame time, and memory before modifications.
+9. Replace the upstream soldier and proprietary-map dependency with original test content before the first project-authored playable slice.
 10. Only then implement the smallest vertical slice: original test room, movement, one target, and one hitscan weapon.
 
 ## Questions intentionally deferred
