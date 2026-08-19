@@ -119,7 +119,7 @@ Milestone 1 is complete. The upstream audit selected the following immutable rev
 - quickjs-rs: `0fc946fb670c0c29bc0135f510bcb0f595415a61`
 - rust-psp: `2cbaf8c9bc72569c76240a1d9743de10731e5f6b`
 
-ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. Milestone 2 is partially verified: the native release build, platform contracts, and PSP guest bundle pass. Native runs are blocked by absent local BSP/WAD data; EBOOT verification is additionally blocked by incomplete LLVM/cargo-psp/SDK bootstrap; PPSSPP verification is blocked by absent `PPSSPPHeadless`. See `docs/project/baseline-2026-08-18.md`.
+ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. Milestone 2 is partially verified: native release build, platform contracts, PSP guest bundle, deterministic headless `walk`, complete PSP bootstrap, release EBOOT, and Memory Stick package pass. Native interactive boot is blocked by an upstream PSP-bundle/desktop-host target mismatch. PPSSPP produces every expected frame, but the installed revision differs from the pinned revision and all five byte-exact golden comparisons fail. See `docs/project/baseline-2026-08-18.md`.
 
 - `AGENTS.md` — constraints and working agreement for coding agents.
 - `README.md` — retained upstream baseline build and runtime documentation.
@@ -139,10 +139,10 @@ ADR 0002 selects a direct OpenStrike downstream while retaining the engine and P
 
 Do these in order:
 
-1. Supply legal local BSP/WAD data through `OPENSTRIKE_MAPS`, then run the native interactive and headless checks.
-2. Install LLVM with `llvm-ar`, finish `bun run bootstrap`, and build/package the PSP EBOOT.
-3. Build the pinned PPSSPP headless revision and run the existing golden journey.
-4. Add relaunch, frame-time, and memory measurements to `docs/project/baseline-2026-08-18.md`.
+1. Resolve or accept the upstream native desktop target-contract mismatch and rerun the interactive smoke.
+2. Build the pinned PPSSPP headless revision and rerun the existing golden journey, or explicitly approve a reviewed rebaseline for the installed revision.
+3. Supply any additional legal WAD inputs needed to eliminate the eight placeholder textures and reassess golden differences.
+4. Add any remaining emulator, frame-time, and memory measurements to `docs/project/baseline-2026-08-18.md`.
 5. Mark Milestone 2 complete only after its remaining exit criteria are verified.
 6. Replace the upstream soldier and proprietary-map dependency with original test content before the first project-authored playable slice.
 7. Only then implement the smallest vertical slice: original test room, movement, one target, and one hitscan weapon.
