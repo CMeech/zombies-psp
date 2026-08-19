@@ -119,7 +119,7 @@ Milestone 1 is complete. The upstream audit selected the following immutable rev
 - quickjs-rs: `0fc946fb670c0c29bc0135f510bcb0f595415a61`
 - rust-psp: `2cbaf8c9bc72569c76240a1d9743de10731e5f6b`
 
-ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. Milestone 2 is partially verified: native release build, platform contracts, PSP guest bundle, deterministic headless `walk`, complete PSP bootstrap, release EBOOT, and Memory Stick package pass. Native interactive boot is blocked by an upstream PSP-bundle/desktop-host target mismatch. PPSSPP produces every expected frame, but the installed revision differs from the pinned revision and all five byte-exact golden comparisons fail. See `docs/project/baseline-2026-08-18.md`.
+ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. Milestone 2 is complete: native release build, platform contracts, PSP guest bundle, deterministic headless `walk`, native interactive auto-quit, complete PSP bootstrap, release EBOOT, Memory Stick package, and PPSSPP capture liveness pass. The native host required one compatibility fix to identify its UI surface as a re-host of the PSP target contract. The newer PPSSPP revision and eight placeholder textures in the temporary upstream map are accepted baseline limitations. See `docs/project/baseline-2026-08-18.md`.
 
 - `AGENTS.md` — constraints and working agreement for coding agents.
 - `README.md` — retained upstream baseline build and runtime documentation.
@@ -139,13 +139,11 @@ ADR 0002 selects a direct OpenStrike downstream while retaining the engine and P
 
 Do these in order:
 
-1. Resolve or accept the upstream native desktop target-contract mismatch and rerun the interactive smoke.
-2. Build the pinned PPSSPP headless revision and rerun the existing golden journey, or explicitly approve a reviewed rebaseline for the installed revision.
-3. Supply any additional legal WAD inputs needed to eliminate the eight placeholder textures and reassess golden differences.
-4. Add any remaining emulator, frame-time, and memory measurements to `docs/project/baseline-2026-08-18.md`.
-5. Mark Milestone 2 complete only after its remaining exit criteria are verified.
-6. Replace the upstream soldier and proprietary-map dependency with original test content before the first project-authored playable slice.
-7. Only then implement the smallest vertical slice: original test room, movement, one target, and one hitscan weapon.
+1. Define Milestone 3's first vertical-slice acceptance criteria and Rust/PocketJS contracts.
+2. Establish preliminary PSP-1000 memory, frame-time, entity, texture, and guest/native traffic budgets.
+3. Design an original test room and reproducible asset-cooking path that replace the upstream map and soldier dependencies.
+4. Define named deterministic scenarios, structured state output, input tapes, and exact-frame screenshot expectations for the slice.
+5. Only after Milestone 3's decisions are recorded, implement the smallest vertical slice: original test room, movement, one target, and one hitscan weapon.
 
 ## Questions intentionally deferred
 

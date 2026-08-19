@@ -75,6 +75,10 @@ impl StrikeGuest {
             std::fs::read(&pak_path).with_context(|| format!("reading {}", pak_path.display()))?;
 
         let ui = UiSurface::new((ui_size.0 as f32, ui_size.1 as f32));
+        // The desktop runtime deliberately re-hosts the PSP product bundle.
+        // Publish that plan contract before mount so PocketJS can retain its
+        // target/ABI guard instead of treating this as a plan-less desktop UI.
+        ui.set_identity("psp", 1);
         ui.feed_pak(&pak);
         let guest = Guest::new()?;
         ui.mount(&guest)?;

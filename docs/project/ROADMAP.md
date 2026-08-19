@@ -64,7 +64,7 @@ Do not introduce product implementation code before this milestone is complete.
 
 ## Milestone 2: Reproduce the unmodified baseline
 
-**Status:** Current — partially verified; see `baseline-2026-08-18.md` for local map, PSP toolchain, and PPSSPP blockers
+**Status:** Complete — verified results and accepted baseline limitations are recorded in `baseline-2026-08-18.md`
 
 Prove that the selected upstream foundation works before changing it.
 
@@ -90,7 +90,7 @@ Prove that the selected upstream foundation works before changing it.
 
 ## Milestone 3: Define the first vertical slice
 
-**Status:** Blocked by Milestone 2
+**Status:** Current
 
 Translate the product direction into the smallest measurable end-to-end experience.
 
