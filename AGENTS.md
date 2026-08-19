@@ -1,38 +1,138 @@
 # Agent Working Agreement
 
-## Project stage
+This file applies to the whole repository. Read it before changing code or documentation.
 
-This repository is documentation-only until an OpenStrike upstream revision is selected and recorded. Do not generate implementation code unless explicitly requested.
+## Start here
 
-## Product boundaries
+Read these files in order:
+
+1. `docs/project/PROJECT_HANDOFF.md`
+2. `docs/project/ROADMAP.md`
+3. `docs/project/architecture/README.md`
+4. `docs/project/development-loop.md`
+5. `docs/project/macos-setup.md` when build tools are needed
+
+Current stage: **Milestone 3 — define the first vertical slice**.
+
+- Milestones 0–2 are complete.
+- Milestone 3 is contract and acceptance-criteria work.
+- Do not implement the vertical slice until Milestone 3 decisions are recorded and its exit criteria are met.
+- Small fixes needed to keep the verified baseline working are allowed when explicitly requested.
+
+## Product rules
 
 - Build an original round-based survival FPS for PSP homebrew.
-- Do not add Call of Duty, Nazi Zombies, Counter-Strike, Valve, or other copyrighted game assets, names, maps, audio, or branding.
-- Treat `pocket-survival` as a temporary working name.
-- Defer gameplay tuning and final controls until explicitly scheduled.
+- `pocket-survival` is a temporary working name.
+- Do not add copyrighted game names, branding, maps, models, sprites, textures, audio, or other assets.
+- Never commit proprietary BSP/WAD files or cooked derivatives.
+- Use only original or suitably licensed project content.
+- Defer final controls, tuning, setting, and content scope until their roadmap milestone.
 
-## Architecture boundaries
+## Architecture rules
 
-- Start from OpenStrike/Pocket3D rather than creating a second renderer.
-- Keep rendering, collision, navigation, spatial queries, and per-entity simulation in Rust.
-- Prefer PocketJS for rules, state transitions, tuning tables, HUD, menus, debug panels, and content configuration.
-- Cross the guest/native boundary once per fixed tick using batched facts and queued intent.
-- Never perform per-enemy or per-pixel native calls from JavaScript.
+- Extend OpenStrike and Pocket3D. Do not create another renderer or parallel engine.
+- Rust owns rendering, collision, navigation, spatial queries, fixed-step simulation, and per-entity hot paths.
+- PocketJS owns rules, state transitions, tuning, HUD, menus, debug UI, and content configuration where practical.
+- Cross the guest/native boundary once per fixed tick: one batched fact/event transfer and one queued intent transfer.
+- Never make per-enemy, per-object, or per-pixel native calls from JavaScript.
 - Target PSP-1000 memory and performance limits first.
+- Keep reusable upstream improvements separable from project-specific behavior.
+- Record significant architecture decisions in `docs/project/decisions/`.
 
-## Development-loop requirements
+## Repository map
 
-- Every feature should have a deterministic headless path when practical.
-- Prefer scripted input and screenshot/state assertions over manual repetition.
-- Use the native desktop build for interactive gameplay checks.
-- Use the browser host for isolated PocketJS UI and component work.
-- Use PPSSPP for target-parity gates, not as the default edit loop.
-- Use physical PSP tests for milestone validation and performance budgets.
-- Avoid introducing a tool or step that requires manual app reset when an automated relaunch or replay can cover it.
+- `crates/openstrike-core/` — portable Rust simulation shared by targets.
+- `crates/openstrike/` — native macOS/headless host.
+- `crates/openstrike-psp/` — PSP host and EBOOT package.
+- `game/` — PocketJS rules, SDK, menus, and HUD.
+- `scripts/` — UI, PSP, emulator, hardware, and platform workflows.
+- `test/` — upstream tooling tests and emulator goldens.
+- `docs/project/` — downstream plans, decisions, setup, and baseline records.
+- `vendor/` — pinned upstream submodules. Treat as read-only unless a dependency update or upstream fix is explicitly requested.
+- `local/`, `dist/`, `out/`, `target/`, `.pocket/` — ignored local/generated data. Never force-add them.
+
+The temporary local BSP/WAD data under `local/openstrike-maps/` exists only to exercise the upstream baseline. Do not build project features around it.
+
+## macOS environment
+
+Use the full setup guide in `docs/project/macos-setup.md`. Common shell setup:
+
+```sh
+export PATH="/opt/homebrew/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/opt/llvm/bin:$PATH"
+export POCKETJS_LLVM_BIN="/opt/homebrew/opt/llvm/bin"
+export PPSSPP_HEADLESS="/absolute/path/to/ppsspp/Build/PPSSPPHeadless"
+export OPENSTRIKE_MAPS="$PWD/local/openstrike-maps"
+```
+
+Do not assume these variables survive into a new terminal or agent process. Detect paths or report missing prerequisites honestly.
+
+## Build and test
+
+Bootstrap a clean checkout:
+
+```sh
+git submodule update --init --recursive
+bun run setup
+bun run bootstrap
+```
+
+Use the narrowest relevant check first:
+
+```sh
+# PocketJS contracts
+bun run typecheck
+bun run check:platforms
+
+# Rust simulation
+cargo test --release -p openstrike-core
+
+# Native build
+bun run build:ui
+cargo build --release -p openstrike
+
+# Deterministic native scenarios
+target/release/openstrike --maps-dir "$OPENSTRIKE_MAPS" --script walk --screenshot out/walk
+target/release/openstrike --maps-dir "$OPENSTRIKE_MAPS" --script round --screenshot out/round
+
+# Automated native interactive smoke
+target/release/openstrike --maps-dir "$OPENSTRIKE_MAPS" --auto-quit 5
+
+# PSP package and emulator journey
+bun scripts/psp.ts --release --package
+bun scripts/e2e-psp.ts
+```
+
+The installed PPSSPP revision may differ from the historical upstream golden revision. Capture liveness is useful; do not overwrite goldens merely to make a mismatch disappear.
+
+## Verification rules
+
+- Every gameplay feature needs a deterministic headless path when practical.
+- Prefer fixed seeds, bounded frames, structured state, scripted input, and exact-frame screenshots.
+- Use native macOS for interaction and feel.
+- Use the browser host only for isolated PocketJS UI/component work.
+- Use PPSSPP for PSP compatibility gates, not the inner edit loop.
+- Use physical PSP tests for milestone performance, memory, controls, and hardware claims.
+- Never present emulator results as physical PSP results.
+- Record commands, measurements, failures, and accepted limitations. Do not claim unrun verification.
 
 ## Change discipline
 
 - Keep changes small and independently testable.
-- Record significant architecture choices in `docs/project/decisions/`.
-- Preserve upstream attribution and licences.
-- Never commit proprietary test maps or cooked derivatives of proprietary assets.
+- Inspect the existing implementation before adding a new abstraction.
+- Preserve upstream attribution, licences, and Git history.
+- Do not edit generated output when the source generator can be changed instead.
+- Do not update submodule revisions incidentally.
+- Do not mix dependency upgrades, architecture changes, gameplay changes, and content work in one change.
+- Preserve unrelated user changes in a dirty worktree.
+- Run `git diff --check` before handoff.
+- Update `docs/project/PROJECT_HANDOFF.md` and roadmap status when the current milestone or immediate next action changes materially.
+
+## Completion report
+
+At handoff, state:
+
+- what changed;
+- what was verified and with which command;
+- what was not verified;
+- any generated/local files created;
+- any remaining blocker or accepted limitation.
