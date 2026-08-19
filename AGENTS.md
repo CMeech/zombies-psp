@@ -33,6 +33,6 @@ This repository is documentation-only until an OpenStrike upstream revision is s
 ## Change discipline
 
 - Keep changes small and independently testable.
-- Record significant architecture choices in `docs/decisions/`.
+- Record significant architecture choices in `docs/project/decisions/`.
 - Preserve upstream attribution and licences.
 - Never commit proprietary test maps or cooked derivatives of proprietary assets.

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://pocketjs.dev/schema/pocket-2.json",
+  "pocket": 2,
+  "id": "dev.pocket-stack.openstrike",
+  "name": "open-strike",
+  "title": "OpenStrike",
+  "version": "0.3.4",
+  "engine": {
+    "capabilities": {
+      "requires": [
+        "text.glyphs.baked",
+        "input.buttons"
+      ],
+      "enhances": [
+        "input.analog.left",
+        "display.viewport.live"
+      ]
+    }
+  },
+  "app": {
+    "entry": "game/openstrike.tsx",
+    "output": "openstrike",
+    "framework": "solid",
+    "viewport": {
+      "fixed": {
+        "logical": [
+          480,
+          272
+        ],
+        "presentation": "integer-fit"
+      },
+      "dynamic": {
+        "default": [
+          640,
+          360
+        ],
+        "min": [
+          360,
+          360
+        ],
+        "max": [
+          640,
+          640
+        ]
+      }
+    }
+  }
+}
