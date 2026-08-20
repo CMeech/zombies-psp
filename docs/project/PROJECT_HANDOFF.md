@@ -1,6 +1,6 @@
 # Project Handoff
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
 
 Use this document to resume the project in a new ChatGPT or Codex conversation. It records the agreed direction, current state, constraints, and immediate next work. The files in `docs/` provide the deeper supporting detail.
 
@@ -121,6 +121,8 @@ Milestone 1 is complete. The upstream audit selected the following immutable rev
 
 ADR 0002 selects a direct OpenStrike downstream while retaining the engine and PSP dependencies as pinned submodules. Milestone 2 is complete: native release build, platform contracts, PSP guest bundle, deterministic headless `walk`, native interactive auto-quit, complete PSP bootstrap, release EBOOT, Memory Stick package, and PPSSPP capture liveness pass. The native host required one compatibility fix to identify its UI surface as a re-host of the PSP target contract. The newer PPSSPP revision and eight placeholder textures in the temporary upstream map are accepted baseline limitations. See `docs/project/baseline-2026-08-18.md`.
 
+Milestone 3 is complete. `docs/project/first-vertical-slice.md` records the accepted functional criteria, state ownership, versioned tick exchange, deterministic scenario/input/result formats, original-room cooking requirements, preliminary PSP-1000 budgets, validation matrix, and implementation order. ADR 0003 records the once-per-tick facts and command-batch decision. The audit found that the baseline has useful snapshot/event/command and scripted-test foundations, but lacks versioned tick identity, stable target IDs, structured scenario results, reusable normalized input tapes, and a single batched guest-to-native return.
+
 - `AGENTS.md` — constraints and working agreement for coding agents.
 - `README.md` — retained upstream baseline build and runtime documentation.
 - `docs/project/README.md` — downstream project-documentation entry point.
@@ -128,6 +130,8 @@ ADR 0002 selects a direct OpenStrike downstream while retaining the engine and P
 - `docs/project/architecture/README.md` — proposed native/guest split.
 - `docs/project/development-loop.md` — fast-loop requirements.
 - `docs/project/decisions/0001-openstrike-pocketjs.md` — initial ADR.
+- `docs/project/decisions/0003-first-slice-runtime-contract.md` — accepted first-slice boundary and determinism decision.
+- `docs/project/first-vertical-slice.md` — Milestone 3 acceptance, contract, budgets, asset path, and validation plan.
 - `docs/project/research/pocketjs-cross-reference.md` — documentation findings and sources.
 - `crates/` — upstream shared simulation and native platform hosts.
 - `game/` — upstream PocketJS rules and HUD bundle.
@@ -137,13 +141,15 @@ ADR 0002 selects a direct OpenStrike downstream while retaining the engine and P
 
 ## Immediate next steps
 
-Do these in order:
+Milestone 4 is current. Follow the independently testable order in
+`docs/project/first-vertical-slice.md`:
 
-1. Define Milestone 3's first vertical-slice acceptance criteria and Rust/PocketJS contracts.
-2. Establish preliminary PSP-1000 memory, frame-time, entity, texture, and guest/native traffic budgets.
-3. Design an original test room and reproducible asset-cooking path that replace the upstream map and soldier dependencies.
-4. Define named deterministic scenarios, structured state output, input tapes, and exact-frame screenshot expectations for the slice.
-5. Only after Milestone 3's decisions are recorded, implement the smallest vertical slice: original test room, movement, one target, and one hitscan weapon.
+1. Add shared versioned contract types, validation, and desktop/PSP host parity tests.
+2. Add the versioned scenario, structured-result, and normalized input-tape runner.
+3. Pin the open-source map compiler/tooling and add the original room, provenance, deterministic cooker, and manifest.
+4. Replace the baseline bot/model dependency with one original stationary target and stable IDs.
+5. Complete the batched command return, slice events, HUD adaptation, and acceptance scenarios.
+6. Verify native headless and interactive behavior, then PPSSPP; collect physical PSP-1000 measurements when hardware is available.
 
 ## Questions intentionally deferred
 
@@ -184,4 +190,4 @@ Do not block foundation work on these decisions.
 
 ## Definition of a successful handoff
 
-A new conversation should be able to read `AGENTS.md` and this file, explain the architecture and current state accurately, and identify upstream pinning plus baseline verification as the next task without needing the prior chat transcript.
+A new conversation should be able to read `AGENTS.md` and this file, explain the architecture and current state accurately, and identify the first Milestone 4 contract implementation step without needing the prior chat transcript.

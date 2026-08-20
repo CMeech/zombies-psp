@@ -12,11 +12,14 @@ Read these files in order:
 4. `docs/project/development-loop.md`
 5. `docs/project/macos-setup.md` when build tools are needed
 
-Current stage: **Milestone 3 — define the first vertical slice**.
+Current stage: **Milestone 4 — implement the first vertical slice**.
 
 - Milestones 0–2 are complete.
-- Milestone 3 is contract and acceptance-criteria work.
-- Do not implement the vertical slice until Milestone 3 decisions are recorded and its exit criteria are met.
+- Milestone 3 is complete; its accepted contract is recorded in
+  `docs/project/first-vertical-slice.md` and ADR 0003.
+- Implement Milestone 4 in the independently testable order recorded in the
+  slice contract. Do not expand into Milestone 5 systems or deferred product
+  decisions.
 - Small fixes needed to keep the verified baseline working are allowed when explicitly requested.
 
 ## Product rules

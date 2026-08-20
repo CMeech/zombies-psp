@@ -90,7 +90,7 @@ Prove that the selected upstream foundation works before changing it.
 
 ## Milestone 3: Define the first vertical slice
 
-**Status:** Current
+**Status:** Complete — acceptance criteria, contracts, deterministic formats, asset path, and preliminary budgets are recorded in `first-vertical-slice.md` and ADR 0003
 
 Translate the product direction into the smallest measurable end-to-end experience.
 
@@ -123,7 +123,7 @@ Translate the product direction into the smallest measurable end-to-end experien
 
 ## Milestone 4: Implement the first vertical slice
 
-**Status:** Blocked by Milestone 3
+**Status:** Current
 
 Build the smallest playable loop without expanding into a broad content backlog.
 
