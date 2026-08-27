@@ -116,7 +116,7 @@ packed representation if their observable contract matches.
 ```ts
 interface SliceFactsV1 {
   schema: 1;
-  tick: number;                 // integer, 64 Hz, state after this tick
+  tick: number;                 // integer, 60 Hz, state after this tick
   seed: number;                 // effective scenario seed
   phase: "starting" | "live" | "won" | "lost";
   player: { hp: number; alive: boolean; speedQ: number };
@@ -134,6 +134,27 @@ interface SliceFactsV1 {
 `speedQ` is horizontal world-units per second rounded to the scenario result's
 declared precision. Runtime presentation may use an unquantized value. Tick 0
 is the initialized state before the first input-bearing simulation step.
+
+### 60 Hz baseline migration
+
+The imported desktop/headless baseline previously advanced at 64 Hz while the
+PSP host advanced once per 60 Hz display frame. Milestone 4 standardizes all
+targets and scenario data on 60 fixed ticks per second. This is a deliberate
+behavioral migration, not a formatting-only change.
+
+Implementation and review must account for changes in tick-indexed positions,
+collision and landing ticks, weapon/reload gates, animation and effect phases,
+RNG consumption, bot timing, round completion, and exact-frame captures. Express
+new gameplay durations as integer tick counts with an explicit rounding policy;
+do not rely on repeated floating-point accumulation to make boundary decisions.
+
+Existing assertions may be revised only when the new 60 Hz result is understood
+and remains within the intended behavior. Do not overwrite native or PPSSPP
+goldens merely because their pixels changed: first classify the difference as
+an expected cadence correction or a regression, record the evidence, and keep
+emulator revision differences separate. PSP already ran at 60 Hz, but HUD decay
+timing previously contained a 64 Hz assumption, so transient capture frames can
+still change.
 
 ### Events
 
@@ -189,7 +210,7 @@ Scenario definitions are checked-in data with these required fields:
   "name": "slice.hit",
   "map": "slice_test_room",
   "seed": 1,
-  "tickRate": 64,
+  "tickRate": 60,
   "maxTicks": 256,
   "playerSpawn": "player_start",
   "inputTape": "test/input/slice-hit.json",
@@ -202,12 +223,19 @@ The runner accepts `--scenario NAME`, with optional `--seed`, `--max-ticks`,
 `--state-out PATH`, and `--capture-dir PATH` overrides. An override is echoed
 in the result so it cannot masquerade as the canonical scenario.
 
+Scenarios that assert only simulation state must run without creating a GPU
+adapter, renderer, window, or offscreen target. The runner initializes graphics
+only when the scenario declares a capture or rendering assertion. Movement,
+collision, hitscan, damage, event ordering, and round-flow regressions therefore
+remain runnable in CPU-only CI and sandboxed environments; visual scenarios
+continue to exercise the real offscreen renderer.
+
 Input tapes contain normalized simulation actions, not platform key codes:
 
 ```json
 {
   "schema": 1,
-  "tickRate": 64,
+  "tickRate": 60,
   "frames": [
     { "tick": 0, "move": [0, 0], "look": [0, 0], "actions": [] },
     { "tick": 96, "actions": ["fire"] },
@@ -229,7 +257,7 @@ The runner writes one JSON result whether it passes or fails:
   "scenario": "slice.hit",
   "status": "passed",
   "seed": 1,
-  "tickRate": 64,
+  "tickRate": 60,
   "ticksRun": 112,
   "final": {},
   "events": {},
@@ -305,7 +333,7 @@ records actual numbers and either meets them or proposes a reviewed revision.
 | Resource | Slice budget | Measurement |
 | --- | --- | --- |
 | Display rate | 60 presented frames/s | Physical PSP bench window |
-| Fixed simulation | 64 ticks/s, no dropped logical ticks in canonical run | Structured tick result |
+| Fixed simulation | 60 ticks/s, no dropped logical ticks in canonical run | Structured tick result |
 | CPU work | average ≤ 12,000 µs; no recurring frame > 16,667 µs | Existing PSP `bench` JSONL, present wait excluded |
 | GPU wait | average ≤ 4,000 µs; max reported, investigated if > 16,667 µs | Existing PSP `bench` JSONL |
 | Guest dispatch + JS + UI | average combined ≤ 4,000 µs; max ≤ 8,000 µs outside boot/round transition | Existing segment counters |
@@ -328,7 +356,8 @@ and memory claims; PPSSPP is a compatibility gate only.
 | Layer | Required responsibility |
 | --- | --- |
 | Rust/TypeScript contract tests | Schema, validation, ordering, limits, tick causality, host parity |
-| Native headless | All five scenarios, structured results, deterministic replay, exact-tick captures |
+| Native CPU-only | Non-visual scenarios, structured results, deterministic replay, no GPU initialization |
+| Native headless GPU | Declared visual scenarios and exact-tick captures through the real renderer |
 | Native interactive macOS | Movement/look feel, collision inspection, HUD readability, restart without navigation |
 | PPSSPP software renderer | EBOOT boot, recorded input journey, capture liveness, project-authored goldens |
 | Physical PSP-1000 | Frame/segment timing, memory/reserve, controls sanity, ten-reset stability |
@@ -343,7 +372,8 @@ Milestone 4 should remain a sequence of independently testable changes:
 
 1. add shared versioned contract types, validation, and host parity tests;
 2. add the scenario/result/input-tape formats and runner using a temporary
-   baseline map only in local verification;
+   baseline map only in local verification; keep non-visual runs CPU-only and
+   initialize the offscreen GPU path only for declared captures;
 3. pin the map compiler/tooling and add the original room source, provenance,
    deterministic cooker, and manifest;
 4. replace the baseline bot/model dependency with the stationary original
@@ -369,3 +399,39 @@ be kept separable from project-specific room, target, rules, and presentation.
 
 Milestone 4 may begin with the implementation order above. Budget changes require
 recorded measurements and a documentation update rather than silent relaxation.
+
+## Milestone 4 implementation progress
+
+As of 2026-08-27:
+
+- Shared `no_std` V1 facts, events, commands, limits, and validation exist in
+  `openstrike-core`.
+- Tick, scenario seed, phase vocabulary, quantized facts, and deterministic RNG
+  reset state are native simulation state. Desktop and PSP publish the same
+  nested V1 facts and contracted event vocabulary from the shared state;
+  focused source-shape parity tests cover both encoders.
+- The native CLI accepts strict scenario and normalized input-tape formats,
+  seed/tick/capture overrides, nested assertions, event-count assertions, and
+  structured pass or failure output.
+- Non-visual scenarios do not create a GPU. A local-only baseline-map smoke run
+  verified this through the structured `gpuInitialized: false` metric; no
+  baseline map or scenario was committed.
+- Declared captures lazily initialize the existing offscreen renderer and
+  record their dimensions and SHA-256 in the result.
+- The original room source/provenance layout, deterministic WAD3 texture
+  builder, ericw-tools pin, setup command, cooker, manifest, and Pocket3D
+  verification path are implemented. The sealed seven-brush room passes strict
+  leak testing and VIS, contains a clear target lane plus an offset miss-lane
+  occluder, and produces a 37,840-byte P3D below the 1 MiB room budget.
+- Two consecutive cooks produced identical WAD and P3D SHA-256 values. The
+  intermediate lit BSP differed for a reason not yet isolated, but Pocket3D
+  normalized both inputs to identical shipped bytes. CPU-only boot and movement checks loaded the named player spawn,
+  settled on the floor, crossed the clear lane, and stopped at the east wall
+  with `gpuInitialized: false`.
+
+The immediate next action is to replace the baseline bot/model dependency with
+the stationary original target and stable target IDs. The checked-in complete
+`slice.*` scenario set remains blocked on that target. Guest commands still use
+the imported per-operation queue;
+the V1 batched return replaces it with the slice-specific command vocabulary
+when the stationary target is introduced in steps 4–5 above.

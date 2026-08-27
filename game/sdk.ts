@@ -7,6 +7,20 @@
 // the host's last-published snapshot, never a guess.
 
 export interface StrikeState {
+  /** V1 fields are absent only in the PSP menu, where no simulation exists. */
+  schema?: 1;
+  tick?: number;
+  seed?: number;
+  player?: { hp: number; alive: boolean; speedQ: number };
+  weapon?: {
+    ammo: number;
+    reserve: number;
+    reloading: boolean;
+    reloadTicksRemaining: number;
+  };
+  targets?: { alive: number; total: number };
+  score?: { wins: number; losses: number };
+  /** Presentation time and temporary flat aliases used by the imported HUD. */
   time: number;
   phase: "menu" | "starting" | "live" | "won" | "lost";
   hp: number;
@@ -23,10 +37,12 @@ export interface StrikeState {
 }
 
 export type StrikeEvent =
-  | { type: "hit"; bot: number; headshot: boolean; damage: number; fatal: boolean }
+  | { type: "shotFired"; weaponId: number; ammo: number }
+  | { type: "targetHit"; targetId: number; damage: number; hp: number; fatal: boolean }
+  | { type: "targetDestroyed"; targetId: number }
   | { type: "playerDamaged"; amount: number; hp: number }
   | { type: "playerDied" }
-  | { type: "roundReset" };
+  | { type: "roundReset"; round: number };
 
 export interface WeaponConfig {
   magSize: number;

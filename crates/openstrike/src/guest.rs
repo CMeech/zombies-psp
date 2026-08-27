@@ -23,6 +23,9 @@ use pocket_mod::Guest;
 use pocket_mod::qjs::{Array, CatchResultExt, Function, Object};
 use pocket_ui_wgpu::{Blit, UiRenderer, UiSurface};
 
+use openstrike_core::SlicePhaseV1;
+use openstrike_core::MAX_EVENTS_V1;
+
 use crate::bot::BotConfig;
 use crate::game::{Command, GameEvent, OpenStrike, Phase};
 use crate::weapon::WeaponConfig;
@@ -103,6 +106,14 @@ impl StrikeGuest {
     /// One guest turn for one game tick.
     pub fn turn(&self, game: &mut OpenStrike) -> Result<()> {
         let events = std::mem::take(&mut game.events);
+        if events.len() > MAX_EVENTS_V1 {
+            return Err(anyhow!(
+                "slice event batch at tick {} has {} entries; limit is {}",
+                game.tick,
+                events.len(),
+                MAX_EVENTS_V1
+            ));
+        }
         self.guest.with(|ctx| -> Result<()> {
             let strike: Object = ctx.globals().get("strike").context("strike surface missing")?;
             let Ok(dispatch) = strike.get::<_, Function>("__dispatch") else {
@@ -186,47 +197,61 @@ impl StrikeGuest {
     }
 }
 
-fn phase_name(phase: Phase) -> &'static str {
-    match phase {
-        Phase::Starting => "starting",
-        Phase::Live => "live",
-        Phase::Ended { won: true } => "won",
-        Phase::Ended { won: false } => "lost",
-    }
-}
-
 fn parse_phase(name: &str) -> Option<Phase> {
-    Some(match name {
-        "starting" => Phase::Starting,
-        "live" => Phase::Live,
-        "won" => Phase::Ended { won: true },
-        "lost" => Phase::Ended { won: false },
-        _ => return None,
-    })
+    SlicePhaseV1::from_wire_name(name).ok().map(Phase::from)
 }
 
 fn build_state<'js>(
     ctx: &pocket_mod::qjs::Ctx<'js>,
     game: &OpenStrike,
 ) -> pocket_mod::qjs::Result<Object<'js>> {
+    let facts = game.facts_v1();
     let o = Object::new(ctx.clone())?;
+    o.set("schema", facts.schema)?;
+    o.set("tick", facts.tick)?;
+    o.set("seed", facts.seed)?;
     o.set("time", game.time as f64)?;
-    o.set("phase", phase_name(game.phase))?;
-    o.set("hp", game.player.health)?;
-    o.set("alive", game.player.alive)?;
-    o.set("ammo", game.weapon.ammo)?;
-    o.set("reserve", game.weapon.reserve)?;
-    o.set("reloading", game.weapon.reloading())?;
+    o.set("phase", facts.phase.wire_name())?;
+
+    let player = Object::new(ctx.clone())?;
+    player.set("hp", facts.player.hp)?;
+    player.set("alive", facts.player.alive)?;
+    player.set("speedQ", facts.player.speed_q)?;
+    o.set("player", player)?;
+
+    let weapon = Object::new(ctx.clone())?;
+    weapon.set("ammo", facts.weapon.ammo)?;
+    weapon.set("reserve", facts.weapon.reserve)?;
+    weapon.set("reloading", facts.weapon.reloading)?;
+    weapon.set("reloadTicksRemaining", facts.weapon.reload_ticks_remaining)?;
+    o.set("weapon", weapon)?;
+
+    let targets = Object::new(ctx.clone())?;
+    targets.set("alive", facts.targets.alive)?;
+    targets.set("total", facts.targets.total)?;
+    o.set("targets", targets)?;
+
+    let score = Object::new(ctx.clone())?;
+    score.set("wins", facts.score.wins)?;
+    score.set("losses", facts.score.losses)?;
+    o.set("score", score)?;
+
+    // Temporary aliases consumed by the imported HUD during migration.
+    o.set("hp", facts.player.hp)?;
+    o.set("alive", facts.player.alive)?;
+    o.set("ammo", facts.weapon.ammo)?;
+    o.set("reserve", facts.weapon.reserve)?;
+    o.set("reloading", facts.weapon.reloading)?;
     let reload_frac = if game.weapon.reloading() {
         1.0 - (game.weapon.reload_left / game.weapon.cfg.reload_time).clamp(0.0, 1.0)
     } else {
         0.0
     };
     o.set("reloadFrac", reload_frac as f64)?;
-    o.set("aliveBots", game.alive_bots() as u32)?;
-    o.set("totalBots", game.bots.len() as u32)?;
-    o.set("wins", game.score.wins)?;
-    o.set("losses", game.score.losses)?;
+    o.set("aliveBots", facts.targets.alive)?;
+    o.set("totalBots", facts.targets.total)?;
+    o.set("wins", facts.score.wins)?;
+    o.set("losses", facts.score.losses)?;
     let v = game.player.state.vel;
     o.set("speed", ((v.x * v.x + v.z * v.z).sqrt()) as f64)?;
     Ok(o)
@@ -238,12 +263,21 @@ fn build_event<'js>(
 ) -> pocket_mod::qjs::Result<Object<'js>> {
     let o = Object::new(ctx.clone())?;
     match e {
-        GameEvent::Hit { bot, headshot, damage, fatal } => {
-            o.set("type", "hit")?;
-            o.set("bot", *bot as u32)?;
-            o.set("headshot", *headshot)?;
+        GameEvent::ShotFired { weapon_id, ammo } => {
+            o.set("type", "shotFired")?;
+            o.set("weaponId", *weapon_id)?;
+            o.set("ammo", *ammo)?;
+        }
+        GameEvent::TargetHit { target_id, damage, hp, fatal } => {
+            o.set("type", "targetHit")?;
+            o.set("targetId", *target_id)?;
             o.set("damage", *damage)?;
+            o.set("hp", *hp)?;
             o.set("fatal", *fatal)?;
+        }
+        GameEvent::TargetDestroyed { target_id } => {
+            o.set("type", "targetDestroyed")?;
+            o.set("targetId", *target_id)?;
         }
         GameEvent::PlayerDamaged { amount, hp } => {
             o.set("type", "playerDamaged")?;
@@ -251,7 +285,10 @@ fn build_event<'js>(
             o.set("hp", *hp)?;
         }
         GameEvent::PlayerDied => o.set("type", "playerDied")?,
-        GameEvent::RoundReset => o.set("type", "roundReset")?,
+        GameEvent::RoundReset { round } => {
+            o.set("type", "roundReset")?;
+            o.set("round", *round)?;
+        }
     }
     Ok(o)
 }

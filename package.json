@@ -8,6 +8,8 @@
     "typecheck": "bun scripts/ensure-pocketjs-generated.ts && bun vendor/pocketjs/node_modules/typescript/bin/tsc --noEmit",
     "check:platforms": "bun run typecheck && bun vendor/pocketjs/tools/pocket.ts check --target psp && bun vendor/pocketjs/tools/pocket.ts check --target vita",
     "build:ui": "bun scripts/build-ui.ts --target psp",
+    "setup:map-tools": "bun scripts/setup-map-tools.ts",
+    "cook:slice-room": "bun scripts/cook-slice-room.ts",
     "build:symbian": "bun scripts/symbian.ts",
     "build:vita": "bun scripts/vita.ts",
     "test:symbian-bundle": "bun scripts/symbian.ts --guest-only",

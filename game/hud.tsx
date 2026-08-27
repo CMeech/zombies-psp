@@ -27,7 +27,7 @@ import { platform } from "@pocketjs/framework/platform";
 import { strike, type StrikeState } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
 
-const TICK = 1 / 64;
+const TICK = 1 / 60;
 
 // Palette (military night-ops): lime reticle, amber warnings, blood red.
 const INK = "#e8f0f2";
@@ -103,10 +103,10 @@ export default function Hud() {
   };
 
   strike.on("playerDamaged", () => (flash = 0.55));
-  strike.on("hit", (e) => {
-    if (e.type !== "hit") return;
-    hitmark = e.headshot ? 0.24 : 0.16;
-    if (e.fatal) pushFeed(e.headshot ? "HEADSHOT × HOSTILE DOWN" : "HOSTILE DOWN");
+  strike.on("targetHit", (e) => {
+    if (e.type !== "targetHit") return;
+    hitmark = 0.16;
+    if (e.fatal) pushFeed("HOSTILE DOWN");
   });
   strike.on("roundReset", () => {
     for (let i = 0; i < FEED_ROWS; i++) feedTtl[i] = 0;

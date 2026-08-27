@@ -58,7 +58,7 @@ turn.
 
 Entities visible across the boundary use opaque, non-recycled IDs within a
 scenario run. Array positions are not IDs. Simulation time is represented by
-an integer tick at 64 Hz; floating-point seconds are presentation-only. A
+an integer tick at 60 Hz; floating-point seconds are presentation-only. A
 scenario declares its seed, map, spawn, tick limit, input tape, assertions, and
 capture ticks. The run result repeats those effective inputs.
 

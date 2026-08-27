@@ -9,6 +9,10 @@ use pocket3d_bsp::trace::{Hull, MapCollision};
 use pocket3d_bsp::types::SpawnPoint;
 
 use crate::bot::{Bot, BotConfig};
+use crate::contract::{
+    PlayerFactsV1, SLICE_SCHEMA_V1, ScoreFactsV1, SliceFactsV1, SlicePhaseV1, TICK_RATE_V1,
+    TargetFactsV1, WeaponFactsV1,
+};
 use crate::weapon::{EffectKind, Effects, MUZZLE_LOCAL, RANGE, Rng, Weapon, WeaponConfig};
 use crate::{sin_cos, sinf, sqrtf};
 
@@ -77,19 +81,27 @@ pub enum Phase {
 /// facts cross as events).
 #[derive(Clone, Debug)]
 pub enum GameEvent {
-    /// The player's shot connected.
-    Hit {
-        bot: usize,
-        headshot: bool,
-        damage: i32,
+    ShotFired {
+        weapon_id: u32,
+        ammo: u32,
+    },
+    TargetHit {
+        target_id: u32,
+        damage: u32,
+        hp: u32,
         fatal: bool,
+    },
+    TargetDestroyed {
+        target_id: u32,
     },
     PlayerDamaged {
         amount: i32,
         hp: i32,
     },
     PlayerDied,
-    RoundReset,
+    RoundReset {
+        round: u32,
+    },
 }
 
 /// Intent the guest sends back through the `strike` surface ops. Queued
@@ -131,6 +143,9 @@ pub struct SimInput {
 /// The platform-free simulation. Platforms own presentation and input; this
 /// owns state and time.
 pub struct StrikeSim {
+    pub tick: u32,
+    pub seed: u32,
+    pub round: u32,
     pub player: Player,
     pub bots: Vec<Bot>,
     pub bot_count: usize,
@@ -162,12 +177,15 @@ impl StrikeSim {
         bot_count: usize,
     ) -> Self {
         let mut sim = Self {
+            tick: 0,
+            seed: 1,
+            round: 1,
             player: Player::spawn(spawn_pos, spawn_yaw),
             bots: Vec::new(),
             bot_count,
             weapon: Weapon::default(),
             effects: Effects::default(),
-            rng: Rng(0x0DDB1A5E5BAD5EED),
+            rng: Rng::seeded(1),
             phase: Phase::Starting,
             score: Score::default(),
             bot_cfg: BotConfig::default(),
@@ -206,9 +224,11 @@ impl StrikeSim {
         self.player.pitch = pitch * 0.25;
         self.weapon.reset();
         self.effects.clear();
+        self.rng = Rng::seeded(self.seed);
+        self.round = self.round.saturating_add(1);
         self.spawn_bots(walk_clip);
         self.phase = Phase::Starting;
-        self.events.push(GameEvent::RoundReset);
+        self.events.push(GameEvent::RoundReset { round: self.round });
     }
 
     /// Apply one guest command (drained after each guest turn).
@@ -256,6 +276,36 @@ impl StrikeSim {
     pub fn ground_speed(&self) -> f32 {
         let v = self.player.state.vel;
         sqrtf(v.x * v.x + v.z * v.z)
+    }
+
+    pub fn facts_v1(&self) -> SliceFactsV1 {
+        SliceFactsV1 {
+            schema: SLICE_SCHEMA_V1,
+            tick: self.tick,
+            seed: self.seed,
+            phase: SlicePhaseV1::from(self.phase),
+            player: PlayerFactsV1 {
+                hp: self.player.health,
+                alive: self.player.alive,
+                speed_q: libm::roundf(self.ground_speed() * 1000.0) as i32,
+            },
+            weapon: WeaponFactsV1 {
+                ammo: self.weapon.ammo,
+                reserve: self.weapon.reserve,
+                reloading: self.weapon.reloading(),
+                reload_ticks_remaining: libm::ceilf(
+                    self.weapon.reload_left.max(0.0) * TICK_RATE_V1 as f32,
+                ) as u32,
+            },
+            targets: TargetFactsV1 {
+                alive: self.alive_bots() as u32,
+                total: self.bots.len() as u32,
+            },
+            score: ScoreFactsV1 {
+                wins: self.score.wins,
+                losses: self.score.losses,
+            },
+        }
     }
 
     /// Full fixed-step game tick.
@@ -329,6 +379,7 @@ impl StrikeSim {
                 }
             }
         }
+        self.tick = self.tick.wrapping_add(1);
     }
 
     fn tick_player_movement(
@@ -380,6 +431,10 @@ impl StrikeSim {
 
     fn fire_shot(&mut self, col: &MapCollision) {
         self.fired_this_tick = true;
+        self.events.push(GameEvent::ShotFired {
+            weapon_id: 1,
+            ammo: self.weapon.ammo,
+        });
         let p = &self.player;
         let eye = p.eye();
         let dir = p.view_dir();
@@ -438,12 +493,16 @@ impl StrikeSim {
             let died = bot.hurt(dmg);
             self.effects
                 .spawn(EffectKind::BloodPuff { pos: hit_point }, 0.22);
-            self.events.push(GameEvent::Hit {
-                bot: i,
-                headshot,
-                damage: dmg,
+            let target_id = i as u32 + 1;
+            self.events.push(GameEvent::TargetHit {
+                target_id,
+                damage: dmg.max(0) as u32,
+                hp: bot.health.max(0) as u32,
                 fatal: died,
             });
+            if died {
+                self.events.push(GameEvent::TargetDestroyed { target_id });
+            }
         } else if wt.fraction < 1.0 {
             self.effects
                 .spawn(EffectKind::Impact { pos: hit_point }, 0.16);
@@ -503,5 +562,26 @@ pub fn ray_aabb(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
         Some(enter.max(0.0))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn facts_and_round_reset_preserve_the_declared_seed() {
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0);
+        sim.seed = 7;
+        sim.rng = Rng::seeded(7);
+        let expected_first = sim.rng.clone().next_u32();
+        let _ = sim.rng.next_u32();
+
+        sim.reset_round(0);
+
+        assert_eq!(sim.facts_v1().seed, 7);
+        assert_eq!(sim.rng.next_u32(), expected_first);
+        assert_eq!(sim.facts_v1().tick, 0);
+        sim.facts_v1().validate().unwrap();
     }
 }

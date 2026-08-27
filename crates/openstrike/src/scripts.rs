@@ -65,7 +65,8 @@ impl Headless {
     }
 }
 
-const TICK: f32 = 1.0 / 64.0;
+const TICK_HZ: u32 = 60;
+const TICK: f32 = 1.0 / TICK_HZ as f32;
 
 fn settle(game: &mut OpenStrike, ticks: u32) {
     let input = Input::default();
@@ -127,7 +128,7 @@ pub fn run_screenshot(mut game: OpenStrike, args: &Args) -> Result<()> {
     let mut input = Input::default();
     // ~1.6 s of approach: bots chase and animate, the player tracks the
     // nearest one. Kept short so the player stays alive (viewmodel visible).
-    for _ in 0..(64 * 8 / 5) {
+    for _ in 0..(TICK_HZ * 8 / 5) {
         if let Some(target) = nearest_bot_chest(&game) {
             aim_at(&mut game, target);
         }
@@ -197,8 +198,8 @@ fn round_script(mut game: OpenStrike, args: &Args) -> Result<()> {
 
     // Observe the bots' AI for a few seconds before engaging, so the test
     // genuinely covers "meet a moving, animated bot".
-    let hold_fire_until = 64 * 4;
-    let budget = 64 * 120; // 2 minutes of simulated time
+    let hold_fire_until = TICK_HZ * 4;
+    let budget = TICK_HZ * 120; // 2 minutes of simulated time
     for tick_no in 0..budget {
         // Steering: run at the nearest living bot, fire when it's visible.
         let player_eye = game.player.eye();
@@ -351,7 +352,7 @@ fn lose_script(mut game: OpenStrike, args: &Args) -> Result<()> {
 
     let input = Input::default();
     let mut lose_seen = false;
-    let budget = 64 * 150;
+    let budget = TICK_HZ * 150;
     for tick_no in 0..budget {
         game.tick(TICK, &input);
         strike.turn(&mut game)?;

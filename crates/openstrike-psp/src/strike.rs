@@ -9,6 +9,8 @@ use alloc::vec::Vec;
 
 use libquickjs_sys::*;
 use openstrike_core::bot::BotConfig;
+use openstrike_core::contract::SlicePhaseV1;
+use openstrike_core::MAX_EVENTS_V1;
 use openstrike_core::sim::{Command, GameEvent, Phase, StrikeSim};
 use openstrike_core::weapon::WeaponConfig;
 use pocketjs_psp::ffi::{add_fn, arg_i32};
@@ -70,23 +72,8 @@ unsafe extern "C" fn js_to_menu(
     JS_UNDEFINED
 }
 
-fn phase_name(phase: Phase) -> &'static str {
-    match phase {
-        Phase::Starting => "starting",
-        Phase::Live => "live",
-        Phase::Ended { won: true } => "won",
-        Phase::Ended { won: false } => "lost",
-    }
-}
-
 fn parse_phase(name: &str) -> Option<Phase> {
-    Some(match name {
-        "starting" => Phase::Starting,
-        "live" => Phase::Live,
-        "won" => Phase::Ended { won: true },
-        "lost" => Phase::Ended { won: false },
-        _ => return None,
-    })
+    SlicePhaseV1::from_wire_name(name).ok().map(Phase::from)
 }
 
 // ---- value helpers ---------------------------------------------------------
@@ -263,19 +250,53 @@ pub unsafe fn register(
 // ---- state/events → guest ---------------------------------------------------
 
 unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
+    let facts = sim.facts_v1();
     let o = JS_NewObject(ctx);
+    set_val(ctx, o, b"schema\0", JS_NewInt32(ctx, facts.schema as i32));
+    set_val(ctx, o, b"tick\0", JS_NewInt32(ctx, facts.tick as i32));
+    set_val(ctx, o, b"seed\0", JS_NewInt32(ctx, facts.seed as i32));
     set_val(ctx, o, b"time\0", JS_NewFloat64(ctx, sim.time as f64));
-    set_str(ctx, o, b"phase\0", phase_name(sim.phase));
-    set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, sim.player.health));
-    set_val(ctx, o, b"alive\0", JS_NewBool(ctx, sim.player.alive));
-    set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, sim.weapon.ammo as i32));
-    set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, sim.weapon.reserve as i32));
-    set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, sim.weapon.reloading()));
+    set_str(ctx, o, b"phase\0", facts.phase.wire_name());
+
+    let player = JS_NewObject(ctx);
+    set_val(ctx, player, b"hp\0", JS_NewInt32(ctx, facts.player.hp));
+    set_val(ctx, player, b"alive\0", JS_NewBool(ctx, facts.player.alive));
+    set_val(ctx, player, b"speedQ\0", JS_NewInt32(ctx, facts.player.speed_q));
+    set_val(ctx, o, b"player\0", player);
+
+    let weapon = JS_NewObject(ctx);
+    set_val(ctx, weapon, b"ammo\0", JS_NewInt32(ctx, facts.weapon.ammo as i32));
+    set_val(ctx, weapon, b"reserve\0", JS_NewInt32(ctx, facts.weapon.reserve as i32));
+    set_val(ctx, weapon, b"reloading\0", JS_NewBool(ctx, facts.weapon.reloading));
+    set_val(
+        ctx,
+        weapon,
+        b"reloadTicksRemaining\0",
+        JS_NewInt32(ctx, facts.weapon.reload_ticks_remaining as i32),
+    );
+    set_val(ctx, o, b"weapon\0", weapon);
+
+    let targets = JS_NewObject(ctx);
+    set_val(ctx, targets, b"alive\0", JS_NewInt32(ctx, facts.targets.alive as i32));
+    set_val(ctx, targets, b"total\0", JS_NewInt32(ctx, facts.targets.total as i32));
+    set_val(ctx, o, b"targets\0", targets);
+
+    let score = JS_NewObject(ctx);
+    set_val(ctx, score, b"wins\0", JS_NewInt32(ctx, facts.score.wins as i32));
+    set_val(ctx, score, b"losses\0", JS_NewInt32(ctx, facts.score.losses as i32));
+    set_val(ctx, o, b"score\0", score);
+
+    // Temporary aliases consumed by the imported HUD during migration.
+    set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, facts.player.hp));
+    set_val(ctx, o, b"alive\0", JS_NewBool(ctx, facts.player.alive));
+    set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, facts.weapon.ammo as i32));
+    set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, facts.weapon.reserve as i32));
+    set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, facts.weapon.reloading));
     set_val(ctx, o, b"reloadFrac\0", JS_NewFloat64(ctx, sim.reload_frac() as f64));
-    set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, sim.alive_bots() as i32));
-    set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, sim.bots.len() as i32));
-    set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, sim.score.wins as i32));
-    set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, sim.score.losses as i32));
+    set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, facts.targets.alive as i32));
+    set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, facts.targets.total as i32));
+    set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, facts.score.wins as i32));
+    set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, facts.score.losses as i32));
     set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, sim.ground_speed() as f64));
     o
 }
@@ -283,17 +304,26 @@ unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
 unsafe fn build_event(ctx: *mut JSContext, e: &GameEvent) -> JSValue {
     let o = JS_NewObject(ctx);
     match e {
-        GameEvent::Hit {
-            bot,
-            headshot,
+        GameEvent::ShotFired { weapon_id, ammo } => {
+            set_str(ctx, o, b"type\0", "shotFired");
+            set_val(ctx, o, b"weaponId\0", JS_NewInt32(ctx, *weapon_id as i32));
+            set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, *ammo as i32));
+        }
+        GameEvent::TargetHit {
+            target_id,
             damage,
+            hp,
             fatal,
         } => {
-            set_str(ctx, o, b"type\0", "hit");
-            set_val(ctx, o, b"bot\0", JS_NewInt32(ctx, *bot as i32));
-            set_val(ctx, o, b"headshot\0", JS_NewBool(ctx, *headshot));
-            set_val(ctx, o, b"damage\0", JS_NewInt32(ctx, *damage));
+            set_str(ctx, o, b"type\0", "targetHit");
+            set_val(ctx, o, b"targetId\0", JS_NewInt32(ctx, *target_id as i32));
+            set_val(ctx, o, b"damage\0", JS_NewInt32(ctx, *damage as i32));
+            set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, *hp as i32));
             set_val(ctx, o, b"fatal\0", JS_NewBool(ctx, *fatal));
+        }
+        GameEvent::TargetDestroyed { target_id } => {
+            set_str(ctx, o, b"type\0", "targetDestroyed");
+            set_val(ctx, o, b"targetId\0", JS_NewInt32(ctx, *target_id as i32));
         }
         GameEvent::PlayerDamaged { amount, hp } => {
             set_str(ctx, o, b"type\0", "playerDamaged");
@@ -301,7 +331,10 @@ unsafe fn build_event(ctx: *mut JSContext, e: &GameEvent) -> JSValue {
             set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, *hp));
         }
         GameEvent::PlayerDied => set_str(ctx, o, b"type\0", "playerDied"),
-        GameEvent::RoundReset => set_str(ctx, o, b"type\0", "roundReset"),
+        GameEvent::RoundReset { round } => {
+            set_str(ctx, o, b"type\0", "roundReset");
+            set_val(ctx, o, b"round\0", JS_NewInt32(ctx, *round as i32));
+        }
     }
     o
 }
@@ -350,6 +383,9 @@ pub unsafe fn dispatch_menu(ctx: *mut JSContext, global: JSValue, time: f64) -> 
 /// `strike.__dispatch(state, events)` if the SDK installed it.
 pub unsafe fn dispatch(ctx: *mut JSContext, global: JSValue, sim: &mut StrikeSim) -> bool {
     let events = core::mem::take(&mut sim.events);
+    if events.len() > MAX_EVENTS_V1 {
+        return false;
+    }
     let strike = JS_GetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _);
     if JS_IsUndefined(strike) {
         JS_FreeValue(ctx, strike);

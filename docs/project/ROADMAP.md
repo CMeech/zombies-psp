@@ -23,14 +23,14 @@ Establish a clean planning repository without committing to an implementation la
 ### Deliverables
 
 - Repository working agreement and product boundaries.
-- Project handoff, architecture direction, and development-loop requirements.
+- Initial transition notes, architecture direction, and development-loop requirements.
 - Initial architecture decision record.
 - Git ignore rules, text normalization, and editor conventions.
 - Provisional directories for documentation, game code, assets, tests, and tools.
 
 ### Exit criteria
 
-- The repository purpose and constraints are understandable from `README.md`, `AGENTS.md`, and `docs/project/PROJECT_HANDOFF.md`.
+- The repository purpose and constraints are understandable from `README.md`, `AGENTS.md`, and this roadmap.
 - Generated files, local secrets, build products, and editor metadata are excluded from version control.
 - No implementation code or third-party game assets have been introduced.
 
@@ -123,7 +123,7 @@ Translate the product direction into the smallest measurable end-to-end experien
 
 ## Milestone 4: Implement the first vertical slice
 
-**Status:** Current
+**Status:** Current — contract, CPU-first scenario runner, and sealed original-room cooking path are implemented; the stationary original target is the immediate next gate
 
 Build the smallest playable loop without expanding into a broad content backlog.
 
@@ -136,6 +136,8 @@ Build the smallest playable loop without expanding into a broad content backlog.
 - Minimal round flow and HUD.
 - Named deterministic scenarios and scripted input.
 - Machine-readable state assertions and exact-frame screenshot coverage.
+- CPU-only execution for non-visual scenarios; initialize an offscreen GPU only
+  for declared captures or rendering assertions.
 - Native macOS interactive verification.
 - PPSSPP parity check.
 - Physical PSP-1000 milestone validation when hardware is available.
@@ -251,4 +253,4 @@ The following should not block foundation work and should only be finalized when
 - Add significant architectural decisions to `docs/project/decisions/` rather than burying them here.
 - Record verified commands and measurements in dedicated baseline or test documents.
 - Keep future milestones broad until evidence from the current milestone supports finer planning.
-- Update `docs/project/PROJECT_HANDOFF.md` whenever the current milestone or immediate next action changes materially.
+- Update this roadmap and the current milestone contract whenever status or the immediate next action changes materially.

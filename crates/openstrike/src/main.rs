@@ -5,6 +5,7 @@ mod args;
 mod bot;
 mod game;
 mod guest;
+mod scenario;
 mod scripts;
 mod weapon;
 
@@ -23,6 +24,10 @@ const WINDOW_SIZE: (u32, u32) = (1600, 900);
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse()?;
+
+    if args.scenario.is_some() {
+        return scenario::run(&args);
+    }
 
     let map_path = args.resolve_map_path()?;
     log::info!("loading {}", map_path.display());
@@ -65,7 +70,7 @@ fn main() -> Result<()> {
         AppConfig {
             title: "OpenStrike (Pocket3D)".into(),
             size: WINDOW_SIZE,
-            tick_hz: 64.0,
+            tick_hz: 60.0,
             capture_mouse: true,
             ..AppConfig::default()
         },

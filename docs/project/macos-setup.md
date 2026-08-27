@@ -25,12 +25,23 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 ## 3. Install native tools
 
 ```sh
-brew install llvm cmake imagemagick
+brew install llvm cmake imagemagick tbb embree
 ```
 
 - LLVM builds PSP code.
 - CMake builds PPSSPP.
 - ImageMagick checks emulator screenshots.
+- TBB and Embree build the pinned original-room compiler.
+
+Build the pinned map tools and cook the original slice room:
+
+```sh
+bun run setup:map-tools
+bun run cook:slice-room
+```
+
+Generated compiler sources stay under ignored `local/tools/`; cooked BSP, WAD,
+P3D, logs, and the hash manifest stay under ignored `dist/maps/`.
 
 ## 4. Install Rust
 

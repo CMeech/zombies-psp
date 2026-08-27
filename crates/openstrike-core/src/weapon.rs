@@ -254,6 +254,12 @@ pub fn rifle_boxes() -> [RifleBox; 10] {
 pub struct Rng(pub u64);
 
 impl Rng {
+    /// Expand a scenario seed while preserving the imported baseline stream
+    /// for canonical seed 1.
+    pub const fn seeded(seed: u32) -> Self {
+        Self(0x0DDB_1A5E_5BAD_5EED ^ (seed as u64).wrapping_sub(1))
+    }
+
     pub fn next_u32(&mut self) -> u32 {
         let mut x = self.0;
         x ^= x << 13;

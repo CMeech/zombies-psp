@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use glam::Vec3;
 
+#[derive(Clone, Debug)]
 pub struct Args {
     /// Directory containing maps (maps/*.bsp + support/*.wad, or flat).
     pub maps_dir: Option<PathBuf>,
@@ -27,6 +28,12 @@ pub struct Args {
     /// Screenshot mode: stage a combat frame with the JSX HUD composited
     /// (boots the guest, spawns bots, fires). Plain mode is a clean vista.
     pub hud: bool,
+    /// Versioned deterministic scenario name or JSON path.
+    pub scenario: Option<String>,
+    pub seed_override: Option<u32>,
+    pub max_ticks_override: Option<u32>,
+    pub state_out: Option<PathBuf>,
+    pub capture_dir: Option<PathBuf>,
 }
 
 impl Default for Args {
@@ -46,6 +53,11 @@ impl Default for Args {
             bots: 3,
             auto_quit: None,
             hud: false,
+            scenario: None,
+            seed_override: None,
+            max_ticks_override: None,
+            state_out: None,
+            capture_dir: None,
         }
     }
 }
@@ -88,6 +100,11 @@ impl Args {
                 "--bots" => a.bots = value("--bots")?.parse()?,
                 "--auto-quit" => a.auto_quit = Some(value("--auto-quit")?.parse()?),
                 "--hud" => a.hud = true,
+                "--scenario" => a.scenario = Some(value("--scenario")?),
+                "--seed" => a.seed_override = Some(value("--seed")?.parse()?),
+                "--max-ticks" => a.max_ticks_override = Some(value("--max-ticks")?.parse()?),
+                "--state-out" => a.state_out = Some(PathBuf::from(value("--state-out")?)),
+                "--capture-dir" => a.capture_dir = Some(PathBuf::from(value("--capture-dir")?)),
                 "--help" | "-h" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -177,5 +194,10 @@ openstrike [options]
   --spawn N           use the Nth CT spawn (default 0)
   --spawn-t           use a T spawn instead
   --script NAME       run a headless scripted test (walk, model, combat, round, lose)
+  --scenario NAME     run a versioned deterministic scenario (or JSON path)
+  --seed N            override the scenario seed (echoed in the result)
+  --max-ticks N       override the scenario tick bound (echoed in the result)
+  --state-out PATH    write the scenario JSON result to PATH
+  --capture-dir DIR   override the scenario capture output directory
   --debug             show the debug overlay
   --bots N            enemy bot count per round (default 3)";
