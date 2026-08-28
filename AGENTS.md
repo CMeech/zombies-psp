@@ -6,8 +6,8 @@ This file applies to the whole repository. Read it before changing code or docum
 
 Read these files in order:
 
-1. `docs/project/PROJECT_HANDOFF.md`
-2. `docs/project/ROADMAP.md`
+1. `docs/project/ROADMAP.md`
+2. `docs/project/first-vertical-slice.md`
 3. `docs/project/architecture/README.md`
 4. `docs/project/development-loop.md`
 5. `docs/project/macos-setup.md` when build tools are needed
@@ -128,7 +128,7 @@ The installed PPSSPP revision may differ from the historical upstream golden rev
 - Do not mix dependency upgrades, architecture changes, gameplay changes, and content work in one change.
 - Preserve unrelated user changes in a dirty worktree.
 - Run `git diff --check` before handoff.
-- Update `docs/project/PROJECT_HANDOFF.md` and roadmap status when the current milestone or immediate next action changes materially.
+- Update the roadmap and current milestone contract when status or the immediate next action changes materially.
 
 ## Completion report
 
