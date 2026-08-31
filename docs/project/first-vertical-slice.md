@@ -402,7 +402,7 @@ recorded measurements and a documentation update rather than silent relaxation.
 
 ## Milestone 4 implementation progress
 
-As of 2026-08-27:
+As of 2026-08-28:
 
 - Shared `no_std` V1 facts, events, commands, limits, and validation exist in
   `openstrike-core`.
@@ -422,16 +422,19 @@ As of 2026-08-27:
   builder, ericw-tools pin, setup command, cooker, manifest, and Pocket3D
   verification path are implemented. The sealed seven-brush room passes strict
   leak testing and VIS, contains a clear target lane plus an offset miss-lane
-  occluder, and produces a 37,840-byte P3D below the 1 MiB room budget.
+  occluder, and produces a 37,856-byte P3D below the 1 MiB room budget.
 - Two consecutive cooks produced identical WAD and P3D SHA-256 values. The
   intermediate lit BSP differed for a reason not yet isolated, but Pocket3D
   normalized both inputs to identical shipped bytes. CPU-only boot and movement checks loaded the named player spawn,
   settled on the floor, crossed the clear lane, and stopped at the east wall
   with `gpuInitialized: false`.
 
-The immediate next action is to replace the baseline bot/model dependency with
-the stationary original target and stable target IDs. The checked-in complete
-`slice.*` scenario set remains blocked on that target. Guest commands still use
-the imported per-operation queue;
-the V1 batched return replaces it with the slice-specific command vocabulary
-when the stationary target is introduced in steps 4–5 above.
+The original room now instantiates one Rust-owned stationary target with stable
+ID `1`, bounded health, reset behavior, native hitscan damage, and procedural
+desktop/PSP presentation. It does not load the temporary baseline soldier model.
+Checked-in `slice.boot`, `slice.hit`, and `slice.miss` scenarios verify the
+starting-to-live transition, target facts, accepted ammunition, and hit/miss
+event counts; `slice.hit` also declares the required 480×272 composed capture.
+The immediate next actions are the movement and complete round-flow scenarios,
+followed by replacing the imported per-operation guest queue with the V1
+batched command return.

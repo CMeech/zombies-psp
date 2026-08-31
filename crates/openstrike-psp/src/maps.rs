@@ -48,10 +48,9 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
             }
             let raw = &ent.d_name;
             let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-            let name = core::str::from_utf8(
-                core::slice::from_raw_parts(raw.as_ptr() as *const u8, len),
-            )
-            .unwrap_or("");
+            let name =
+                core::str::from_utf8(core::slice::from_raw_parts(raw.as_ptr() as *const u8, len))
+                    .unwrap_or("");
             // FAT-backed roots report 8.3-fitting names UPPERCASE
             // (DE_DUST2.P3D); every target filesystem here is
             // case-insensitive, so normalize to lowercase throughout.
@@ -94,11 +93,7 @@ pub unsafe fn load(
             sys::sceIoClose(fd);
             return Err("map larger than the map buffer");
         }
-        let n = sys::sceIoRead(
-            fd,
-            buf_ptr.add(off) as *mut c_void,
-            (buf_cap - off) as u32,
-        );
+        let n = sys::sceIoRead(fd, buf_ptr.add(off) as *mut c_void, (buf_cap - off) as u32);
         if n < 0 {
             sys::sceIoClose(fd);
             return Err("map read failed");
@@ -117,12 +112,20 @@ pub unsafe fn load(
         return Err("map has no CT spawns");
     }
     let spawn = map.ct_spawns[0];
-    let bot_spawns = if map.t_spawns.is_empty() {
+    let target_spawn = (map.name == "slice_test_room")
+        .then(|| map.t_spawns.first().copied())
+        .flatten();
+    let bot_spawns = if target_spawn.is_some() {
+        Vec::new()
+    } else if map.t_spawns.is_empty() {
         map.ct_spawns.clone()
     } else {
         map.t_spawns.clone()
     };
     let mut sim = StrikeSim::new(spawn.pos, spawn.yaw, bot_spawns, 3);
+    if let Some(target) = target_spawn {
+        sim.set_stationary_target(target.pos);
+    }
     for cmd in boot_cfg {
         sim.apply(cmd.clone(), 0);
     }

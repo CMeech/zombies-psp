@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "name": "slice.boot",
+  "map": "slice_test_room",
+  "seed": 1,
+  "tickRate": 60,
+  "maxTicks": 75,
+  "playerSpawn": "player_start",
+  "inputTape": "test/input/slice-idle.json",
+  "assertions": [
+    { "type": "equals", "tick": 0, "path": "phase", "value": "starting" },
+    { "type": "equals", "tick": 0, "path": "seed", "value": 1 },
+    { "type": "equals", "tick": 0, "path": "targets.alive", "value": 1 },
+    { "type": "equals", "tick": 0, "path": "targets.total", "value": 1 },
+    { "type": "equals", "tick": 75, "path": "phase", "value": "live" }
+  ],
+  "captures": []
+}

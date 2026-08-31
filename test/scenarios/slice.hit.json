@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "name": "slice.hit",
+  "map": "slice_test_room",
+  "seed": 1,
+  "tickRate": 60,
+  "maxTicks": 80,
+  "playerSpawn": "player_start",
+  "inputTape": "test/input/slice-hit.json",
+  "assertions": [
+    { "type": "eventCount", "event": "shotFired", "count": 1 },
+    { "type": "eventCount", "event": "targetHit", "count": 1 },
+    { "type": "eventCount", "event": "targetDestroyed", "count": 0 },
+    { "type": "equals", "tick": 80, "path": "weapon.ammo", "value": 29 },
+    { "type": "equals", "tick": 80, "path": "targets.alive", "value": 1 },
+    { "type": "equals", "tick": 80, "path": "targets.total", "value": 1 }
+  ],
+  "captures": [{ "tick": 75, "name": "hit" }]
+}

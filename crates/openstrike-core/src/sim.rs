@@ -19,6 +19,44 @@ use crate::{sin_cos, sinf, sqrtf};
 pub const MOUSE_SENS: f32 = 0.002;
 pub const WALK_SPEED_SCALE: f32 = 0.52;
 const BOT_HALF: Vec3 = Vec3::new(16.0, 36.0, 16.0);
+pub const TARGET_HALF: Vec3 = Vec3::new(16.0, 36.0, 8.0);
+pub const TARGET_ID: u32 = 1;
+pub const TARGET_HEALTH: i32 = 100;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Target {
+    pub id: u32,
+    pub pos: Vec3,
+    pub health: i32,
+    pub max_health: i32,
+}
+
+impl Target {
+    pub fn new(pos: Vec3) -> Self {
+        Self {
+            id: TARGET_ID,
+            pos,
+            health: TARGET_HEALTH,
+            max_health: TARGET_HEALTH,
+        }
+    }
+
+    pub fn alive(&self) -> bool {
+        self.health > 0
+    }
+
+    pub fn hurt(&mut self, damage: i32) -> bool {
+        if !self.alive() {
+            return false;
+        }
+        self.health = (self.health - damage.max(0)).max(0);
+        self.health == 0
+    }
+
+    pub fn reset(&mut self) {
+        self.health = self.max_health;
+    }
+}
 
 pub struct Player {
     pub state: CharacterState,
@@ -74,7 +112,9 @@ pub enum Phase {
     /// gameplay mod (JS) — Rust only knows the gate is closed.
     Starting,
     Live,
-    Ended { won: bool },
+    Ended {
+        won: bool,
+    },
 }
 
 /// Facts the core reports to the guest, batched per tick (RUNTIMES.md Law 2:
@@ -148,6 +188,7 @@ pub struct StrikeSim {
     pub round: u32,
     pub player: Player,
     pub bots: Vec<Bot>,
+    pub target: Option<Target>,
     pub bot_count: usize,
     pub weapon: Weapon,
     pub effects: Effects,
@@ -182,6 +223,7 @@ impl StrikeSim {
             round: 1,
             player: Player::spawn(spawn_pos, spawn_yaw),
             bots: Vec::new(),
+            target: None,
             bot_count,
             weapon: Weapon::default(),
             effects: Effects::default(),
@@ -202,10 +244,16 @@ impl StrikeSim {
         sim
     }
 
+    pub fn set_stationary_target(&mut self, pos: Vec3) {
+        self.target = Some(Target::new(pos));
+        self.bot_count = 0;
+        self.bots.clear();
+    }
+
     /// (Re)spawn bots; `walk_clip` is the platform's walk-cycle clip index.
     pub fn spawn_bots(&mut self, walk_clip: usize) {
         self.bots.clear();
-        if self.bot_spawns.is_empty() {
+        if self.target.is_some() || self.bot_spawns.is_empty() {
             return;
         }
         for i in 0..self.bot_count {
@@ -227,8 +275,12 @@ impl StrikeSim {
         self.rng = Rng::seeded(self.seed);
         self.round = self.round.saturating_add(1);
         self.spawn_bots(walk_clip);
+        if let Some(target) = &mut self.target {
+            target.reset();
+        }
         self.phase = Phase::Starting;
-        self.events.push(GameEvent::RoundReset { round: self.round });
+        self.events
+            .push(GameEvent::RoundReset { round: self.round });
     }
 
     /// Apply one guest command (drained after each guest turn).
@@ -265,6 +317,19 @@ impl StrikeSim {
         self.bots.iter().filter(|b| b.alive()).count()
     }
 
+    pub fn alive_targets(&self) -> usize {
+        self.target
+            .map_or_else(|| self.alive_bots(), |target| usize::from(target.alive()))
+    }
+
+    pub fn total_targets(&self) -> usize {
+        if self.target.is_some() {
+            1
+        } else {
+            self.bots.len()
+        }
+    }
+
     pub fn reload_frac(&self) -> f32 {
         if self.weapon.reloading() {
             1.0 - (self.weapon.reload_left / self.weapon.cfg.reload_time).clamp(0.0, 1.0)
@@ -298,8 +363,8 @@ impl StrikeSim {
                 ) as u32,
             },
             targets: TargetFactsV1 {
-                alive: self.alive_bots() as u32,
-                total: self.bots.len() as u32,
+                alive: self.alive_targets() as u32,
+                total: self.total_targets() as u32,
             },
             score: ScoreFactsV1 {
                 wins: self.score.wins,
@@ -453,6 +518,16 @@ impl StrikeSim {
         // World hit.
         let wt = col.trace(Hull::Point, eye, eye + dir * RANGE);
         let mut best_t = wt.fraction * RANGE;
+        let mut hit_target = false;
+        if let Some(target) = self.target.filter(|target| target.alive()) {
+            if let Some(t) = ray_aabb(eye, dir, target.pos - TARGET_HALF, target.pos + TARGET_HALF)
+            {
+                if t < best_t {
+                    best_t = t;
+                    hit_target = true;
+                }
+            }
+        }
         let mut hit_bot: Option<usize> = None;
         for (i, bot) in self.bots.iter().enumerate() {
             if !bot.alive() {
@@ -462,6 +537,7 @@ impl StrikeSim {
             if let Some(t) = ray_aabb(eye, dir, c - BOT_HALF, c + BOT_HALF) {
                 if t < best_t {
                     best_t = t;
+                    hit_target = false;
                     hit_bot = Some(i);
                 }
             }
@@ -482,7 +558,24 @@ impl StrikeSim {
             0.07,
         );
 
-        if let Some(i) = hit_bot {
+        if hit_target {
+            let target = self.target.as_mut().expect("hit target exists");
+            let dmg = self.weapon.cfg.damage_body;
+            let died = target.hurt(dmg);
+            self.effects
+                .spawn(EffectKind::BloodPuff { pos: hit_point }, 0.22);
+            self.events.push(GameEvent::TargetHit {
+                target_id: target.id,
+                damage: dmg.max(0) as u32,
+                hp: target.health as u32,
+                fatal: died,
+            });
+            if died {
+                self.events.push(GameEvent::TargetDestroyed {
+                    target_id: target.id,
+                });
+            }
+        } else if let Some(i) = hit_bot {
             let bot = &mut self.bots[i];
             let headshot = hit_point.y > bot.state.pos.y + 22.0;
             let dmg = if headshot {
@@ -583,5 +676,26 @@ mod tests {
         assert_eq!(sim.rng.next_u32(), expected_first);
         assert_eq!(sim.facts_v1().tick, 0);
         sim.facts_v1().validate().unwrap();
+    }
+
+    #[test]
+    fn stationary_target_has_stable_identity_and_resets_health() {
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0);
+        sim.set_stationary_target(Vec3::new(160.0, 36.0, 0.0));
+
+        let target = sim.target.as_mut().unwrap();
+        assert_eq!(target.id, TARGET_ID);
+        assert!(!target.hurt(40));
+        assert_eq!(target.health, 60);
+        assert_eq!(sim.facts_v1().targets.alive, 1);
+        assert_eq!(sim.facts_v1().targets.total, 1);
+
+        sim.reset_round(0);
+
+        let target = sim.target.unwrap();
+        assert_eq!(target.id, TARGET_ID);
+        assert_eq!(target.health, TARGET_HEALTH);
+        assert!(target.alive());
+        assert!(sim.bots.is_empty());
     }
 }

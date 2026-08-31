@@ -14,7 +14,6 @@
 //! arena allocator installed by linking the host library, pak fed to the
 //! core before JS). The cooked map renders in place from `.rodata`.
 
-
 extern crate alloc;
 
 mod input;
@@ -28,11 +27,11 @@ use libquickjs_sys::*;
 use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(feature = "capture")]
-use psp::sys::DisplaySetBufSync;
+use psp::sys::CtrlButtons;
 #[cfg(feature = "capture")]
 use psp::sys::DisplayPixelFormat;
 #[cfg(feature = "capture")]
-use psp::sys::CtrlButtons;
+use psp::sys::DisplaySetBufSync;
 #[cfg(any(feature = "capture", feature = "bench"))]
 use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
@@ -122,10 +121,8 @@ unsafe fn run() {
     // 'static is honest; soundness rule: the current Game (which borrows
     // it through CookedMap) is dropped before any reload overwrites it.
     let words = (max_map_bytes as usize + 15) / 16 + 1;
-    let map_buf_ptr = alloc::boxed::Box::leak(
-        alloc::vec![0u128; words].into_boxed_slice(),
-    )
-    .as_mut_ptr() as *mut u8;
+    let map_buf_ptr = alloc::boxed::Box::leak(alloc::vec![0u128; words].into_boxed_slice())
+        .as_mut_ptr() as *mut u8;
     let map_buf_cap = words * 16;
 
     let mut pool = FramePool::new();
@@ -291,6 +288,7 @@ unsafe fn run() {
         sky::draw(&mut pool, &cam, &sky_params);
         if let Some(g) = &mut game {
             g.world.draw(&mut pool, &cam);
+            present::draw_target(&mut pool, &g.sim, &cam);
             present::draw_bots(&mut pool, &bot_body, &g.sim.bots);
             present::draw_effects(&mut pool, &g.sim, &cam);
             present::draw_viewmodel(&mut pool, &rifle, &g.sim);
@@ -441,7 +439,13 @@ impl Bench {
         if work > 25_000 {
             let line = alloc::format!(
                 "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",
-                abs_frame, work, segs[0], segs[1], segs[2], segs[3], segs[4],
+                abs_frame,
+                work,
+                segs[0],
+                segs[1],
+                segs[2],
+                segs[3],
+                segs[4],
             );
             for path in [
                 b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -543,10 +547,7 @@ fn parse_num(s: &str) -> Option<u32> {
 }
 
 #[cfg(feature = "capture")]
-fn capture_sample(
-    frame: u32,
-    fallback: (CtrlButtons, u8, u8),
-) -> (CtrlButtons, u8, u8) {
+fn capture_sample(frame: u32, fallback: (CtrlButtons, u8, u8)) -> (CtrlButtons, u8, u8) {
     if CAPTURE_INPUT.is_empty() {
         return fallback;
     }

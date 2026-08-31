@@ -74,9 +74,9 @@
 "angle" "0"
 }
 {
-"classname" "info_target"
+"classname" "info_player_deathmatch"
 "targetname" "target_start"
-"origin" "160 0 48"
+"origin" "160 0 36"
 }
 {
 "classname" "light"

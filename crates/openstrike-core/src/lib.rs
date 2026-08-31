@@ -24,7 +24,9 @@ pub use contract::{
     SliceEventV1, SliceFactsV1, SlicePhaseV1, TICK_RATE_V1, TargetConfigV1, TargetFactsV1,
     WeaponConfigV1, WeaponFactsV1, validate_event_batch_v1,
 };
-pub use sim::{Command, GameEvent, Phase, Player, Score, SimInput, StrikeSim};
+pub use sim::{
+    Command, GameEvent, Phase, Player, Score, SimInput, StrikeSim, TARGET_HALF, TARGET_ID, Target,
+};
 pub use weapon::{
     EffectKind, Effects, FxBeam, FxSprite, GUN_COLORS, MUZZLE_LOCAL, RANGE, RifleBox, Rng, Weapon,
     WeaponConfig, rifle_boxes,

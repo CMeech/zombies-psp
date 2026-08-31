@@ -12,8 +12,8 @@ use pocket3d::prelude::*;
 use pocket3d::winit::event::MouseButton;
 use pocket3d::winit::keyboard::KeyCode;
 
-pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
 use openstrike_core::StrikeSim;
+pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
 
 use crate::weapon::build_rifle;
 
@@ -58,12 +58,22 @@ impl OpenStrike {
             fov_y: 74f32.to_radians(),
             ..Default::default()
         };
-        let bot_spawns = if map.t_spawns.is_empty() {
+        let target_spawn = map
+            .entities
+            .iter()
+            .find(|entity| entity.get("targetname") == Some("target_start"))
+            .and_then(|entity| entity.origin());
+        let bot_spawns = if target_spawn.is_some() {
+            Vec::new()
+        } else if map.t_spawns.is_empty() {
             map.ct_spawns.clone()
         } else {
             map.t_spawns.clone()
         };
-        let sim = StrikeSim::new(spawn_pos, spawn_yaw, bot_spawns, bot_count);
+        let mut sim = StrikeSim::new(spawn_pos, spawn_yaw, bot_spawns, bot_count);
+        if let Some(pos) = target_spawn {
+            sim.set_stationary_target(pos);
+        }
         Self {
             sim,
             map,
@@ -88,6 +98,10 @@ impl OpenStrike {
         ));
         self.scene.world = Some(world);
         self.rifle_asset = Some(build_rifle(gpu, renderer));
+
+        if self.sim.target.is_some() {
+            return;
+        }
 
         match crate::args::find_asset("models/Soldier.glb") {
             Some(path) => {
@@ -198,14 +212,24 @@ impl OpenStrike {
         // Effects.
         self.scene.sprites.clear();
         self.scene.beams.clear();
+        if let Some(target) = self.sim.target.filter(|target| target.alive()) {
+            let health = target.health as f32 / target.max_health as f32;
+            self.scene.sprites.push(Sprite {
+                pos: target.pos,
+                size: 64.0,
+                color: [1.0, 0.18 + health * 0.42, 0.05, 1.0],
+            });
+        }
         let mut sprites = Vec::new();
         let mut beams = Vec::new();
         self.sim.effects.emit(&mut sprites, &mut beams);
-        self.scene.sprites.extend(sprites.into_iter().map(|s| Sprite {
-            pos: s.pos,
-            size: s.size,
-            color: s.color,
-        }));
+        self.scene
+            .sprites
+            .extend(sprites.into_iter().map(|s| Sprite {
+                pos: s.pos,
+                size: s.size,
+                color: s.color,
+            }));
         self.scene.beams.extend(beams.into_iter().map(|b| Beam {
             a: b.a,
             b: b.b,
@@ -244,4 +268,3 @@ impl OpenStrike {
         }
     }
 }
-
