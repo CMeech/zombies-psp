@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "tickRate": 60,
+  "frames": [
+    { "tick": 0, "move": [0, 0], "look": [0, 0], "actions": [] },
+    { "tick": 16, "move": [0, 1] },
+    { "tick": 144, "move": [0, 0] },
+    { "tick": 200, "move": [0, 1] },
+    { "tick": 400, "move": [0, 0] },
+    { "tick": 420, "move": [0, -1] },
+    { "tick": 800, "move": [0, 0] },
+    { "tick": 820, "move": [1, 0] },
+    { "tick": 1100, "move": [0, 0] },
+    { "tick": 1120, "move": [-1, 0] },
+    { "tick": 1500, "move": [0, 0] }
+  ]
+}

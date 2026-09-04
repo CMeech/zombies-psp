@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "name": "slice.movement",
+  "map": "slice_test_room",
+  "seed": 1,
+  "tickRate": 60,
+  "maxTicks": 1520,
+  "playerSpawn": "player_start",
+  "inputTape": "test/input/slice-movement.json",
+  "assertions": [
+    { "type": "near", "tick": 16, "path": "player.position.1", "value": 36.031, "tolerance": 0.001 },
+    { "type": "near", "tick": 144, "path": "player.position.0", "value": 105.466, "tolerance": 0.001 },
+    { "type": "near", "tick": 144, "path": "player.position.2", "value": 0, "tolerance": 0.001 },
+    { "type": "near", "tick": 400, "path": "player.position.0", "value": 239.969, "tolerance": 0.001 },
+    { "type": "near", "tick": 400, "path": "player.velocity.0", "value": 0, "tolerance": 0.001 },
+    { "type": "near", "tick": 800, "path": "player.position.0", "value": -239.969, "tolerance": 0.001 },
+    { "type": "near", "tick": 800, "path": "player.velocity.0", "value": 0, "tolerance": 0.001 },
+    { "type": "near", "tick": 1100, "path": "player.position.2", "value": 175.969, "tolerance": 0.001 },
+    { "type": "near", "tick": 1100, "path": "player.velocity.2", "value": 0, "tolerance": 0.001 },
+    { "type": "near", "tick": 1500, "path": "player.position.2", "value": -175.969, "tolerance": 0.001 },
+    { "type": "near", "tick": 1500, "path": "player.velocity.2", "value": 0, "tolerance": 0.001 }
+  ],
+  "captures": []
+}

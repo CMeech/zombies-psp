@@ -123,7 +123,7 @@ Translate the product direction into the smallest measurable end-to-end experien
 
 ## Milestone 4: Implement the first vertical slice
 
-**Status:** Current — contract runner, original room, stationary target, and deterministic boot/hit/miss scenarios are implemented; movement/complete scenarios and the batched command return are the next gates
+**Status:** Current — contract runner, original room, stationary target, and all five deterministic slice scenarios are implemented; capture verification and the batched command return are the next gates
 
 Build the smallest playable loop without expanding into a broad content backlog.
 

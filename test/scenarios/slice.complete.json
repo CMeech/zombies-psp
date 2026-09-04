@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "name": "slice.complete",
+  "map": "slice_test_room",
+  "seed": 1,
+  "tickRate": 60,
+  "maxTicks": 320,
+  "playerSpawn": "player_start",
+  "inputTape": "test/input/slice-complete.json",
+  "assertions": [
+    { "type": "eventCount", "event": "shotFired", "count": 3 },
+    { "type": "eventCount", "event": "targetHit", "count": 3 },
+    { "type": "eventCount", "event": "targetDestroyed", "count": 1 },
+    { "type": "eventCount", "event": "roundReset", "count": 1 },
+    { "type": "equals", "tick": 89, "path": "phase", "value": "won" },
+    { "type": "equals", "tick": 89, "path": "targets.alive", "value": 0 },
+    { "type": "equals", "tick": 89, "path": "score.wins", "value": 1 },
+    { "type": "equals", "tick": 320, "path": "phase", "value": "starting" },
+    { "type": "equals", "tick": 320, "path": "targets.alive", "value": 1 },
+    { "type": "equals", "tick": 320, "path": "weapon.ammo", "value": 30 },
+    { "type": "equals", "tick": 320, "path": "score.wins", "value": 1 }
+  ],
+  "captures": [{ "tick": 90, "name": "complete" }]
+}

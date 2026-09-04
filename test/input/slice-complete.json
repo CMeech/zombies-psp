@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "tickRate": 60,
+  "frames": [
+    { "tick": 0, "move": [0, 0], "look": [0, 0], "actions": [] },
+    { "tick": 75, "actions": ["fire"] },
+    { "tick": 76, "actions": [] },
+    { "tick": 82, "actions": ["fire"] },
+    { "tick": 83, "actions": [] },
+    { "tick": 89, "actions": ["fire"] },
+    { "tick": 90, "actions": [] }
+  ]
+}

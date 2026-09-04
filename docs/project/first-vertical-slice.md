@@ -402,7 +402,7 @@ recorded measurements and a documentation update rather than silent relaxation.
 
 ## Milestone 4 implementation progress
 
-As of 2026-08-28:
+As of 2026-08-31:
 
 - Shared `no_std` V1 facts, events, commands, limits, and validation exist in
   `openstrike-core`.
@@ -432,9 +432,13 @@ As of 2026-08-28:
 The original room now instantiates one Rust-owned stationary target with stable
 ID `1`, bounded health, reset behavior, native hitscan damage, and procedural
 desktop/PSP presentation. It does not load the temporary baseline soldier model.
-Checked-in `slice.boot`, `slice.hit`, and `slice.miss` scenarios verify the
-starting-to-live transition, target facts, accepted ammunition, and hit/miss
-event counts; `slice.hit` also declares the required 480×272 composed capture.
-The immediate next actions are the movement and complete round-flow scenarios,
-followed by replacing the imported per-operation guest queue with the V1
-batched command return.
+All five required scenarios are checked in. They verify the starting-to-live
+transition, target facts, deterministic 128-tick forward displacement,
+collision stops at all four room walls, accepted ammunition, hit/miss event
+counts, one fatal event sequence and win, and one automatic reset without a
+duplicate score change. `slice.hit` and `slice.complete` declare the required
+480×272 composed captures. The complete flow passes when probed CPU-only; its
+declared capture could not be verified in the sandbox because no compatible GPU
+adapter was exposed. The immediate next action is replacing the imported
+per-operation guest queue with the V1 batched command return, with native
+capture verification still outstanding.
