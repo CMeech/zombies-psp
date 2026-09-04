@@ -192,7 +192,12 @@ Run emulator journey:
 bun scripts/e2e-psp.ts
 ```
 
-Current PPSSPP can be newer than upstream golden version. All frames may run but byte comparison may differ. Fine for compatibility smoke. Make new goldens after original maps exist.
+This cooks and autostarts the committed `slice_test_room`, then compares the
+live, hit, and completion captures with project-authored software-renderer
+goldens. `OPENSTRIKE_MAPS` is not required. Byte-exact comparison requires the
+PPSSPP commit recorded in `test/goldens-psp/PPSSPP-COMMIT.txt`; a different
+revision can still provide capture-liveness evidence but must not overwrite the
+goldens merely to remove a mismatch.
 
 ## New terminal?
 

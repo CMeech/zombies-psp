@@ -446,9 +446,11 @@ after each guest turn, reject unknown commands, wrong ticks, invalid tuning, or
 more than eight commands, then apply accepted commands in array order. Native
 map/menu lifecycle operations remain a separate host concern. A PSP capture
 build autostarting `slice_test_room` completed under PPSSPPHeadless's software
-renderer and emitted all four requested 512×272 raw frames; the inspected
-480×272 crop was non-degenerate and showed the room, target, weapon, HUD, and
-post-shot ammunition state. This is capture-liveness evidence, not an accepted
-golden or physical-hardware result. The immediate next actions are native
-interactive verification and project-authored emulator goldens. Physical
-PSP-1000 evidence remains required for hardware budget claims.
+renderer for live, hit, and completion journeys. All 14 requested 512×272 raw
+frames were emitted. Four reviewed 480×272 crops cover the live room, accepted
+hit, fatal hit, and stable won-state HUD; they are checked in as byte-exact
+goldens pinned to PPSSPP commit
+`ac9ef58f969ad9fc95bc013f04ad117d852f07ce`. A second comparison run passed
+byte-for-byte. The immediate next action is native interactive verification.
+Physical PSP-1000 evidence remains required for hardware budget claims; the
+emulator result is compatibility evidence only.

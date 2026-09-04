@@ -249,13 +249,14 @@ git submodule update --init          # pocket-stack/pocketjs + rust-psp + quickj
 bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
-bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/fire)
+bun scripts/e2e-psp.ts               # slice-room PPSSPP goldens (live/hit/complete)
 ```
 
 Install: copy `dist/PSP/` to a Memory Stick root (or the emulator's memstick
 dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu with its
 icon. The build needs the PSP toolchain from the PocketJS ecosystem
-(`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
+(`pocket doctor`). The original slice room is cooked from committed sources;
+`OPENSTRIKE_MAPS` is optional and only adds local baseline maps.
 
 Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
 down reloads, d-pad up walks, **SELECT** opens the return-to-menu dialog. In

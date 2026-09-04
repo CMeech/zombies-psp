@@ -123,7 +123,7 @@ Translate the product direction into the smallest measurable end-to-end experien
 
 ## Milestone 4: Implement the first vertical slice
 
-**Status:** Current — the complete deterministic slice, validated batched guest-command return, and PPSSPP original-room capture liveness are implemented; native interactive review, emulator goldens, and hardware evidence remain
+**Status:** Current — the complete deterministic slice, validated batched guest-command return, and reviewed PPSSPP original-room goldens are implemented; native interactive review and hardware evidence remain
 
 Build the smallest playable loop without expanding into a broad content backlog.
 

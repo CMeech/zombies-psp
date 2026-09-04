@@ -1,13 +1,13 @@
 // Build the OpenStrike PSP EBOOT: JS bundle → cooked map → cargo psp.
 //
-//   bun scripts/psp.ts                     # de_dust2, debug profile
+//   bun scripts/psp.ts                     # slice_test_room, debug profile
 //   bun scripts/psp.ts -r                  # release
 //   bun scripts/psp.ts --map de_inferno --bots 4
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
-// Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
-// local default. The PSP SDK resolver uses the explicit PSP_SDK / PSPDEV
-// contract before Pocket's shared, versioned toolchain cache.
+// The original slice room is always cooked from committed sources. Optional
+// local baseline maps may also be supplied through OPENSTRIKE_MAPS; they are
+// never required for the shipped Milestone 4 path.
 
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -23,15 +23,15 @@ function flag(name: string, def: string): string {
   const i = argv.indexOf(`--${name}`);
   return i !== -1 && argv[i + 1] ? argv[i + 1] : def;
 }
-const mapName = flag("map", "de_dust2");
+const mapName = flag("map", "slice_test_room");
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
 
-const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
-if (!existsSync(`${mapsRoot}/maps`)) {
-  console.error(`no maps dir at ${mapsRoot}/maps (set OPENSTRIKE_MAPS)`);
+const mapsRoot = process.env.OPENSTRIKE_MAPS;
+if (mapsRoot && !existsSync(`${mapsRoot}/maps`)) {
+  console.error(`no maps dir at ${mapsRoot}/maps (unset or correct OPENSTRIKE_MAPS)`);
   process.exit(1);
 }
 
@@ -39,13 +39,15 @@ if (!existsSync(`${mapsRoot}/maps`)) {
 console.log("openstrike-psp: resolving and building the Pocket app contract");
 const pocketPlan = await compilePocketTarget("psp");
 
-// ---- 2. cook EVERY map (the menu lists them all) -------------------------
+// ---- 2. cook the original room and any explicit local baseline maps ------
+await $`bun run cook:slice-room`.cwd(repo);
+
 // 32-unit light grid: samples every other GoldSrc luxel — crisp baked
 // shadows for ~0.9 MB more map (GE headroom is huge, this is cheap).
 mkdirSync(`${repo}dist/maps`, { recursive: true });
-const bsps = readdirSync(`${mapsRoot}/maps`)
+const bsps = mapsRoot ? readdirSync(`${mapsRoot}/maps`)
   .filter((f) => f.endsWith(".bsp"))
-  .sort();
+  .sort() : [];
 for (const f of bsps) {
   const stem = f.slice(0, -4);
   const src = `${mapsRoot}/maps/${f}`;

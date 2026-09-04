@@ -1,17 +1,17 @@
-// PSP e2e: deterministic PPSSPPHeadless runs of openstrike-psp against
-// byte-exact goldens (the vendor/pocketjs test/e2e-ppsspp.ts recipe, adapted
-// for the 3D runtime and its extended frame:mask:lx:ly input scripts).
+// PSP e2e: deterministic PPSSPPHeadless runs of the original Milestone 4 room
+// against byte-exact project goldens. Input uses the runtime's extended
+// frame:mask:lx:ly capture format.
 //
 //   bun scripts/e2e-psp.ts            # compare against test/goldens-psp
 //   UPDATE=1 bun scripts/e2e-psp.ts   # re-baseline
 //
-// Requires PPSSPPHeadless (PPSSPP_HEADLESS env or ~/ppsspp-src/build) and
-// the CS maps (OPENSTRIKE_MAPS). Software renderer only — it is the only
-// deterministic backend; goldens are only promised for the PPSSPP commit in
-// test/goldens-psp/PPSSPP-COMMIT.txt.
+// Requires PPSSPPHeadless (PPSSPP_HEADLESS env or the repository-adjacent
+// ppsspp checkout) and ImageMagick. Software renderer only; goldens are
+// promised only for the commit recorded in test/goldens-psp/PPSSPP-COMMIT.txt.
 
 import { $ } from "bun";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -20,8 +20,6 @@ const update = process.env.UPDATE === "1";
 
 // PSP button bits.
 const R = 0x200; // fire
-const SQUARE = 0x8000; // look left
-const CIRCLE = 0x2000; // look right
 
 interface Spec {
   name: string;
@@ -33,35 +31,45 @@ interface Spec {
   shots: number[];
 }
 
-// Round flow: rules.ts freeze 1.2s (72 ticks) after eval, then live.
-const SPECS: Spec[] = [
+// Round flow: rules.ts freezes combat for 72 ticks. The room's spawn yaw aims
+// directly down the clear lane at the stationary target.
+const ALL_SPECS: Spec[] = [
   {
-    // Idle at CT spawn: world + viewmodel + HUD, nothing moving.
-    name: "spawn",
+    // Live round: original world, procedural target, viewmodel, and HUD.
+    name: "slice-live",
     input: "0:0",
-    capStart: 96,
-    capN: 4,
+    capStart: 88,
+    capN: 2,
     shots: [0],
   },
   {
-    // Walk forward out of spawn, then sweep the view right.
-    name: "walk",
-    input: "0:0,80:0:128:20,150:0x2000:128:20,190:0:128:96",
-    capStart: 150,
-    capN: 44,
-    shots: [0, 40],
+    // One accepted shot: muzzle/tracer, hit marker, and ammo decrement.
+    name: "slice-hit",
+    input: `0:0,75:${R},76:0`,
+    capStart: 75,
+    capN: 4,
+    shots: [1],
   },
   {
-    // Hold fire: muzzle flash + tracer + ammo drain on the HUD.
-    name: "fire",
-    input: `0:0,90:${R}`,
-    capStart: 92,
-    capN: 12,
-    shots: [1, 8],
+    // Three interval-spaced hits destroy the target and show completion.
+    name: "slice-complete",
+    input: `0:0,75:${R},76:0,82:${R},83:0,89:${R},90:0`,
+    capStart: 89,
+    capN: 8,
+    shots: [1, 6],
   },
 ];
+const selectedSpec = process.env.E2E_PSP_SPEC;
+const SPECS = selectedSpec ? ALL_SPECS.filter((spec) => spec.name === selectedSpec) : ALL_SPECS;
+if (SPECS.length === 0) {
+  console.error(`unknown E2E_PSP_SPEC '${selectedSpec}'`);
+  process.exit(1);
+}
 
-const ppsspp = process.env.PPSSPP_HEADLESS ?? `${home}/ppsspp-src/build/PPSSPPHeadless`;
+const adjacentPpsspp = `${repo}../ppsspp/Build/PPSSPPHeadless`;
+const legacyPpsspp = `${home}/ppsspp-src/build/PPSSPPHeadless`;
+const ppsspp = process.env.PPSSPP_HEADLESS ??
+  (existsSync(adjacentPpsspp) ? adjacentPpsspp : legacyPpsspp);
 if (!existsSync(ppsspp)) {
   console.error(`PPSSPPHeadless not found at ${ppsspp}`);
   process.exit(1);
@@ -76,7 +84,7 @@ let failures = 0;
 for (const spec of SPECS) {
   console.log(`\n## ${spec.name} (input: ${spec.input})`);
   console.log("# build capture EBOOT ...");
-  await $`bun scripts/psp.ts --capture`
+  await $`bun scripts/psp.ts --capture --map slice_test_room`
     .cwd(repo)
     .env({
       ...process.env,
@@ -119,9 +127,12 @@ for (const spec of SPECS) {
     }
 
     const golden = `${goldens}/${spec.name}.f${shot}.png`;
-    if (update || !existsSync(golden)) {
+    if (update) {
       await Bun.write(golden, Bun.file(png));
       console.log(`baseline ${spec.name}.f${shot} written`);
+    } else if (!existsSync(golden)) {
+      console.error(`FAIL ${spec.name}.f${shot}: golden missing (review ${png}, then run UPDATE=1 intentionally)`);
+      failures++;
     } else {
       const a = Buffer.from(await Bun.file(png).arrayBuffer());
       const b = Buffer.from(await Bun.file(golden).arrayBuffer());
@@ -136,7 +147,8 @@ for (const spec of SPECS) {
 }
 
 if (update) {
-  const commit = await $`git -C ${home}/ppsspp-src rev-parse HEAD`.nothrow().text();
+  const ppssppRepo = resolve(ppsspp, "../..");
+  const commit = await $`git -C ${ppssppRepo} rev-parse HEAD`.nothrow().text();
   if (commit.trim()) {
     await Bun.write(`${goldens}/PPSSPP-COMMIT.txt`, commit);
   }
