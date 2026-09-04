@@ -224,6 +224,9 @@ mod vita {
         // Configuration commands run synchronously during bundle evaluation;
         // retain them as the template for every subsequently loaded map.
         let mut boot_config: Vec<Command> = Vec::new();
+        if !strike::take_commands(runtime.context(), runtime.global(), 0) {
+            fail("invalid initial slice command batch");
+        }
         strike::drain(|command| boot_config.push(command));
 
         let mut game = if AUTOSTART.is_empty() {
@@ -295,6 +298,10 @@ mod vita {
             runtime
                 .frame(tick.ui_buttons as i32)
                 .unwrap_or_else(|error| fail(&error));
+            let published_tick = game.as_ref().map_or(0, |current| current.sim.tick);
+            if !strike::take_commands(runtime.context(), runtime.global(), published_tick) {
+                fail("invalid slice command batch");
+            }
             strike::drain(|command| match &mut game {
                 Some(current) => current.sim.apply(command, 0),
                 None => boot_config.push(command),

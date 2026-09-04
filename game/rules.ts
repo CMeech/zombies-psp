@@ -14,20 +14,13 @@ export const ROUND_END_PAUSE = 3.5;
 // The rifle and the opposition, stated explicitly: change these numbers and
 // you have made a mod.
 strike.configureWeapon({
-  magSize: 30,
-  reserve: 90,
-  fireInterval: 0.105,
-  reloadTime: 2.4,
-  damageBody: 34,
-  damageHead: 100,
+  magazineCapacity: 30,
+  reserveCapacity: 90,
+  fireIntervalTicks: 6,
+  reloadTicks: 144,
+  damage: 34,
 });
-strike.configureBots({
-  count: 3,
-  speed: 190,
-  attackInterval: 1.4,
-  damageMin: 8,
-  damageMax: 14,
-});
+strike.configureTarget(100);
 
 /** Seconds since the current phase began (HUD reads this for countdowns). */
 const [phaseAge, setPhaseAge] = createSignal(0);

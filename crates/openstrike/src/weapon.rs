@@ -7,7 +7,7 @@ use pocket3d::model::{ModelAsset, ModelVertex};
 use pocket3d::prelude::*;
 use pocket3d::renderer::Renderer;
 
-pub use openstrike_core::weapon::{GUN_COLORS, WeaponConfig};
+pub use openstrike_core::weapon::GUN_COLORS;
 use openstrike_core::weapon::rifle_boxes;
 
 fn add_box(

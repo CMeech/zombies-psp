@@ -10,8 +10,8 @@ use pocket3d_bsp::types::SpawnPoint;
 
 use crate::bot::{Bot, BotConfig};
 use crate::contract::{
-    PlayerFactsV1, SLICE_SCHEMA_V1, ScoreFactsV1, SliceFactsV1, SlicePhaseV1, TICK_RATE_V1,
-    TargetFactsV1, WeaponFactsV1,
+    PlayerFactsV1, SLICE_SCHEMA_V1, ScoreFactsV1, SliceCommandV1, SliceFactsV1, SlicePhaseV1,
+    TICK_RATE_V1, TargetFactsV1, WeaponFactsV1,
 };
 use crate::weapon::{EffectKind, Effects, MUZZLE_LOCAL, RANGE, Rng, Weapon, WeaponConfig};
 use crate::{sin_cos, sinf, sqrtf};
@@ -154,6 +154,7 @@ pub enum Command {
     AddLoss,
     SetBotCount(usize),
     ConfigureWeapon(WeaponConfig),
+    ConfigureTarget(i32),
     ConfigureBots(BotConfig),
 }
 
@@ -296,9 +297,44 @@ impl StrikeSim {
                 let mag = self.weapon.cfg.mag_size;
                 self.weapon.ammo = self.weapon.ammo.min(mag);
             }
+            Command::ConfigureTarget(health) => {
+                if let Some(target) = &mut self.target {
+                    target.max_health = health;
+                    target.health = health;
+                }
+            }
             Command::ConfigureBots(cfg) => {
                 self.bot_count = cfg.count.min(16);
                 self.bot_cfg = cfg;
+            }
+        }
+    }
+
+    /// Apply one validated V1 guest command. Platform adapters parse and
+    /// validate the enclosing batch once, then preserve this order.
+    pub fn apply_slice_command(&mut self, command: SliceCommandV1, walk_clip: usize) {
+        match command {
+            SliceCommandV1::SetPhase(phase) => {
+                self.apply(Command::SetPhase(phase.into()), walk_clip)
+            }
+            SliceCommandV1::ResetRound => self.apply(Command::ResetRound, walk_clip),
+            SliceCommandV1::AddWin => self.apply(Command::AddWin, walk_clip),
+            SliceCommandV1::AddLoss => self.apply(Command::AddLoss, walk_clip),
+            SliceCommandV1::ConfigureWeapon(config) => {
+                self.apply(
+                    Command::ConfigureWeapon(WeaponConfig {
+                        mag_size: config.magazine_capacity,
+                        reserve: config.reserve_capacity,
+                        fire_interval: config.fire_interval_ticks as f32 / TICK_RATE_V1 as f32,
+                        reload_time: config.reload_ticks as f32 / TICK_RATE_V1 as f32,
+                        damage_body: config.damage as i32,
+                        damage_head: config.damage as i32,
+                    }),
+                    walk_clip,
+                );
+            }
+            SliceCommandV1::ConfigureTarget(config) => {
+                self.apply(Command::ConfigureTarget(config.health as i32), walk_clip)
             }
         }
     }
@@ -697,5 +733,33 @@ mod tests {
         assert_eq!(target.health, TARGET_HEALTH);
         assert!(target.alive());
         assert!(sim.bots.is_empty());
+    }
+
+    #[test]
+    fn slice_configuration_commands_apply_tick_values_and_target_health() {
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0);
+        sim.set_stationary_target(Vec3::X);
+        sim.apply_slice_command(
+            SliceCommandV1::ConfigureWeapon(crate::contract::WeaponConfigV1 {
+                magazine_capacity: 12,
+                reserve_capacity: 48,
+                fire_interval_ticks: 9,
+                reload_ticks: 120,
+                damage: 25,
+            }),
+            0,
+        );
+        sim.apply_slice_command(
+            SliceCommandV1::ConfigureTarget(crate::contract::TargetConfigV1 { health: 75 }),
+            0,
+        );
+
+        assert_eq!(sim.weapon.cfg.mag_size, 12);
+        assert_eq!(sim.weapon.cfg.reserve, 48);
+        assert_eq!(sim.weapon.cfg.fire_interval, 9.0 / 60.0);
+        assert_eq!(sim.weapon.cfg.reload_time, 2.0);
+        assert_eq!(sim.weapon.cfg.damage_body, 25);
+        assert_eq!(sim.weapon.cfg.damage_head, 25);
+        assert_eq!(sim.target.unwrap().max_health, 75);
     }
 }

@@ -1,6 +1,8 @@
 //! Construct the shared simulation from a parsed cooked map and replay the
 //! product configuration that the JS guest emitted before a world existed.
 
+use alloc::vec::Vec;
+
 use openstrike_core::StrikeSim;
 use openstrike_core::sim::Command;
 use pocket3d_bsp::cooked::CookedMap;

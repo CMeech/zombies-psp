@@ -42,6 +42,13 @@ Current stage: **Milestone 4 — implement the first vertical slice**.
 - Keep reusable upstream improvements separable from project-specific behavior.
 - Record significant architecture decisions in `docs/project/decisions/`.
 
+## Platform priority
+
+- PSP is the primary product and milestone validation target. Prioritize PSP packaging, PPSSPP compatibility, and physical PSP evidence over work on secondary hosts.
+- Vita and Symbian are inherited secondary hosts. Do not spend milestone time on their full builds or platform-specific features unless explicitly requested.
+- When shared code affects a secondary host, use only the narrowest practical compile or contract-parity check, and report it as secondary compatibility evidence rather than milestone validation.
+- A secondary-host failure blocks PSP work only when it exposes a defect in shared code used by PSP; otherwise record it as an accepted limitation and keep PSP progress moving.
+
 ## Repository map
 
 - `crates/openstrike-core/` — portable Rust simulation shared by targets.

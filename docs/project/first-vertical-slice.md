@@ -402,7 +402,7 @@ recorded measurements and a documentation update rather than silent relaxation.
 
 ## Milestone 4 implementation progress
 
-As of 2026-08-31:
+As of 2026-09-04:
 
 - Shared `no_std` V1 facts, events, commands, limits, and validation exist in
   `openstrike-core`.
@@ -437,8 +437,18 @@ transition, target facts, deterministic 128-tick forward displacement,
 collision stops at all four room walls, accepted ammunition, hit/miss event
 counts, one fatal event sequence and win, and one automatic reset without a
 duplicate score change. `slice.hit` and `slice.complete` declare the required
-480×272 composed captures. The complete flow passes when probed CPU-only; its
-declared capture could not be verified in the sandbox because no compatible GPU
-adapter was exposed. The immediate next action is replacing the imported
-per-operation guest queue with the V1 batched command return, with native
-capture verification still outstanding.
+480×272 composed captures. Both declared captures pass through the native
+headless GPU path at their exact ticks.
+
+PocketJS now accumulates simulation intent in one ordered, tick-tagged V1
+command batch. Desktop and handheld adapters take and validate that batch once
+after each guest turn, reject unknown commands, wrong ticks, invalid tuning, or
+more than eight commands, then apply accepted commands in array order. Native
+map/menu lifecycle operations remain a separate host concern. A PSP capture
+build autostarting `slice_test_room` completed under PPSSPPHeadless's software
+renderer and emitted all four requested 512×272 raw frames; the inspected
+480×272 crop was non-degenerate and showed the room, target, weapon, HUD, and
+post-shot ammunition state. This is capture-liveness evidence, not an accepted
+golden or physical-hardware result. The immediate next actions are native
+interactive verification and project-authored emulator goldens. Physical
+PSP-1000 evidence remains required for hardware budget claims.

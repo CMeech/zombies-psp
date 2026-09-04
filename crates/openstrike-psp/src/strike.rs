@@ -8,11 +8,12 @@
 use alloc::vec::Vec;
 
 use libquickjs_sys::*;
-use openstrike_core::bot::BotConfig;
-use openstrike_core::contract::SlicePhaseV1;
-use openstrike_core::MAX_EVENTS_V1;
-use openstrike_core::sim::{Command, GameEvent, Phase, StrikeSim};
+use openstrike_core::contract::{
+    SliceCommandBatchV1, SliceCommandV1, SlicePhaseV1, TargetConfigV1, WeaponConfigV1,
+};
+use openstrike_core::sim::{Command, GameEvent, StrikeSim};
 use openstrike_core::weapon::WeaponConfig;
+use openstrike_core::{MAX_COMMANDS_V1, MAX_EVENTS_V1};
 use pocketjs_psp::ffi::{add_fn, arg_i32};
 
 // Symbols the vendored libquickjs-sys omits (provided by the linked QuickJS
@@ -20,8 +21,8 @@ use pocketjs_psp::ffi::{add_fn, arg_i32};
 extern "C" {
     fn JS_NewStringLen(ctx: *mut JSContext, s: *const u8, len: usize) -> JSValue;
     fn JS_NewArray(ctx: *mut JSContext) -> JSValue;
-    fn JS_SetPropertyUint32(ctx: *mut JSContext, this_obj: JSValue, idx: u32, val: JSValue)
-    -> i32;
+    fn JS_GetPropertyUint32(ctx: *mut JSContext, this_obj: JSValue, idx: u32) -> JSValue;
+    fn JS_SetPropertyUint32(ctx: *mut JSContext, this_obj: JSValue, idx: u32, val: JSValue) -> i32;
 }
 
 /// Commands queued by ops during the guest turn (single-threaded host).
@@ -30,6 +31,24 @@ static mut COMMANDS: Vec<Command> = Vec::new();
 pub unsafe fn drain(mut apply: impl FnMut(Command)) {
     for cmd in COMMANDS.drain(..) {
         apply(cmd);
+    }
+}
+
+fn command_for_sim(command: SliceCommandV1) -> Command {
+    match command {
+        SliceCommandV1::SetPhase(phase) => Command::SetPhase(phase.into()),
+        SliceCommandV1::ResetRound => Command::ResetRound,
+        SliceCommandV1::AddWin => Command::AddWin,
+        SliceCommandV1::AddLoss => Command::AddLoss,
+        SliceCommandV1::ConfigureWeapon(config) => Command::ConfigureWeapon(WeaponConfig {
+            mag_size: config.magazine_capacity,
+            reserve: config.reserve_capacity,
+            fire_interval: config.fire_interval_ticks as f32 / 60.0,
+            reload_time: config.reload_ticks as f32 / 60.0,
+            damage_body: config.damage as i32,
+            damage_head: config.damage as i32,
+        }),
+        SliceCommandV1::ConfigureTarget(config) => Command::ConfigureTarget(config.health as i32),
     }
 }
 
@@ -72,10 +91,6 @@ unsafe extern "C" fn js_to_menu(
     JS_UNDEFINED
 }
 
-fn parse_phase(name: &str) -> Option<Phase> {
-    SlicePhaseV1::from_wire_name(name).ok().map(Phase::from)
-}
-
 // ---- value helpers ---------------------------------------------------------
 
 unsafe fn set_val(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], val: JSValue) {
@@ -97,7 +112,11 @@ unsafe fn get_f32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default
     let mut out = 0f64;
     let bad = JS_ToFloat64(ctx, &mut out, v) != 0;
     JS_FreeValue(ctx, v);
-    if bad { default } else { out as f32 }
+    if bad {
+        default
+    } else {
+        out as f32
+    }
 }
 
 unsafe fn get_i32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default: i32) -> i32 {
@@ -109,132 +128,118 @@ unsafe fn get_u32(ctx: *mut JSContext, obj: JSValue, key: &'static [u8], default
     get_i32(ctx, obj, key, default as i32).max(0) as u32
 }
 
-unsafe fn arg_str_apply(ctx: *mut JSContext, argc: i32, argv: *mut JSValue, f: impl FnOnce(&str)) {
-    if argc < 1 {
-        return;
-    }
+unsafe fn property_string(
+    ctx: *mut JSContext,
+    object: JSValue,
+    key: &'static [u8],
+) -> Option<alloc::string::String> {
+    let value = JS_GetPropertyStr(ctx, object, key.as_ptr() as *const _);
+    let mut result = None;
     let mut len: size_t = 0;
-    let s = JS_ToCStringLen2(ctx, &mut len, *argv, 0);
-    if !s.is_null() {
-        if let Ok(text) = core::str::from_utf8(core::slice::from_raw_parts(s as *const u8, len)) {
-            f(text);
+    let text = JS_ToCStringLen2(ctx, &mut len, value, 0);
+    if !text.is_null() {
+        if let Ok(text) = core::str::from_utf8(core::slice::from_raw_parts(text as *const u8, len))
+        {
+            result = Some(text.into());
         }
-        JS_FreeCString(ctx, s);
+        JS_FreeCString(ctx, text);
     }
+    JS_FreeValue(ctx, value);
+    result
 }
 
-// ---- ops --------------------------------------------------------------------
-
-unsafe extern "C" fn js_set_phase(
-    ctx: *mut JSContext,
-    _this: JSValue,
-    argc: i32,
-    argv: *mut JSValue,
-) -> JSValue {
-    arg_str_apply(ctx, argc, argv, |name| {
-        if let Some(p) = parse_phase(name) {
-            COMMANDS.push(Command::SetPhase(p));
+unsafe fn parse_slice_command(ctx: *mut JSContext, object: JSValue) -> Option<SliceCommandV1> {
+    let kind = property_string(ctx, object, b"type\0")?;
+    Some(match kind.as_str() {
+        "setPhase" => SliceCommandV1::SetPhase(
+            SlicePhaseV1::from_wire_name(&property_string(ctx, object, b"phase\0")?).ok()?,
+        ),
+        "resetRound" => SliceCommandV1::ResetRound,
+        "addWin" => SliceCommandV1::AddWin,
+        "addLoss" => SliceCommandV1::AddLoss,
+        "configureWeapon" => {
+            let config = JS_GetPropertyStr(ctx, object, b"config\0".as_ptr() as *const _);
+            let command = SliceCommandV1::ConfigureWeapon(WeaponConfigV1 {
+                magazine_capacity: get_u32(ctx, config, b"magazineCapacity\0", 0),
+                reserve_capacity: get_u32(ctx, config, b"reserveCapacity\0", 0),
+                fire_interval_ticks: get_u32(ctx, config, b"fireIntervalTicks\0", 0),
+                reload_ticks: get_u32(ctx, config, b"reloadTicks\0", 0),
+                damage: get_u32(ctx, config, b"damage\0", 0),
+            });
+            JS_FreeValue(ctx, config);
+            command
         }
-    });
-    JS_UNDEFINED
+        "configureTarget" => {
+            let config = JS_GetPropertyStr(ctx, object, b"config\0".as_ptr() as *const _);
+            let command = SliceCommandV1::ConfigureTarget(TargetConfigV1 {
+                health: get_u32(ctx, config, b"health\0", 0),
+            });
+            JS_FreeValue(ctx, config);
+            command
+        }
+        _ => return None,
+    })
 }
 
-unsafe extern "C" fn js_reset_round(
-    _ctx: *mut JSContext,
-    _this: JSValue,
-    _argc: i32,
-    _argv: *mut JSValue,
-) -> JSValue {
-    COMMANDS.push(Command::ResetRound);
-    JS_UNDEFINED
-}
-
-unsafe extern "C" fn js_add_win(
-    _ctx: *mut JSContext,
-    _this: JSValue,
-    _argc: i32,
-    _argv: *mut JSValue,
-) -> JSValue {
-    COMMANDS.push(Command::AddWin);
-    JS_UNDEFINED
-}
-
-unsafe extern "C" fn js_add_loss(
-    _ctx: *mut JSContext,
-    _this: JSValue,
-    _argc: i32,
-    _argv: *mut JSValue,
-) -> JSValue {
-    COMMANDS.push(Command::AddLoss);
-    JS_UNDEFINED
-}
-
-unsafe extern "C" fn js_set_bot_count(
-    ctx: *mut JSContext,
-    _this: JSValue,
-    argc: i32,
-    argv: *mut JSValue,
-) -> JSValue {
-    let n = arg_i32(ctx, argc, argv, 0).max(0) as usize;
-    COMMANDS.push(Command::SetBotCount(n));
-    JS_UNDEFINED
-}
-
-unsafe extern "C" fn js_configure_weapon(
-    ctx: *mut JSContext,
-    _this: JSValue,
-    argc: i32,
-    argv: *mut JSValue,
-) -> JSValue {
-    if argc >= 1 {
-        let o = *argv;
-        let d = WeaponConfig::default();
-        COMMANDS.push(Command::ConfigureWeapon(WeaponConfig {
-            mag_size: get_u32(ctx, o, b"magSize\0", d.mag_size),
-            reserve: get_u32(ctx, o, b"reserve\0", d.reserve),
-            fire_interval: get_f32(ctx, o, b"fireInterval\0", d.fire_interval),
-            reload_time: get_f32(ctx, o, b"reloadTime\0", d.reload_time),
-            damage_body: get_i32(ctx, o, b"damageBody\0", d.damage_body),
-            damage_head: get_i32(ctx, o, b"damageHead\0", d.damage_head),
-        }));
+/// Take and validate the one simulation-command batch produced by this guest
+/// turn. Parsed commands retain their array order for the existing drain step.
+pub unsafe fn take_commands(ctx: *mut JSContext, global: JSValue, published_tick: u32) -> bool {
+    COMMANDS.clear();
+    let strike = JS_GetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _);
+    let take = JS_GetPropertyStr(ctx, strike, b"__takeCommands\0".as_ptr() as *const _);
+    if JS_IsUndefined(take) {
+        JS_FreeValue(ctx, take);
+        JS_FreeValue(ctx, strike);
+        return false;
     }
-    JS_UNDEFINED
-}
-
-unsafe extern "C" fn js_configure_bots(
-    ctx: *mut JSContext,
-    _this: JSValue,
-    argc: i32,
-    argv: *mut JSValue,
-) -> JSValue {
-    if argc >= 1 {
-        let o = *argv;
-        let d = BotConfig::default();
-        COMMANDS.push(Command::ConfigureBots(BotConfig {
-            count: get_u32(ctx, o, b"count\0", d.count as u32) as usize,
-            speed: get_f32(ctx, o, b"speed\0", d.speed),
-            attack_interval: get_f32(ctx, o, b"attackInterval\0", d.attack_interval),
-            damage_min: get_i32(ctx, o, b"damageMin\0", d.damage_min),
-            damage_max: get_i32(ctx, o, b"damageMax\0", d.damage_max),
-        }));
+    let mut args = [JS_NewInt32(ctx, published_tick as i32)];
+    let batch_value = JS_Call(ctx, take, strike, 1, args.as_mut_ptr());
+    JS_FreeValue(ctx, args[0]);
+    JS_FreeValue(ctx, take);
+    JS_FreeValue(ctx, strike);
+    if JS_ValueGetTag(batch_value) == JS_TAG_EXCEPTION {
+        JS_FreeValue(ctx, batch_value);
+        return false;
     }
-    JS_UNDEFINED
+
+    let schema = get_u32(ctx, batch_value, b"schema\0", 0);
+    let after_tick = get_u32(ctx, batch_value, b"afterTick\0", u32::MAX);
+    let array = JS_GetPropertyStr(ctx, batch_value, b"commands\0".as_ptr() as *const _);
+    let length = get_u32(ctx, array, b"length\0", u32::MAX);
+    if length as usize > MAX_COMMANDS_V1 {
+        JS_FreeValue(ctx, array);
+        JS_FreeValue(ctx, batch_value);
+        return false;
+    }
+    let mut commands = Vec::new();
+    for index in 0..length {
+        let object = JS_GetPropertyUint32(ctx, array, index);
+        let Some(command) = parse_slice_command(ctx, object) else {
+            JS_FreeValue(ctx, object);
+            JS_FreeValue(ctx, array);
+            JS_FreeValue(ctx, batch_value);
+            return false;
+        };
+        JS_FreeValue(ctx, object);
+        commands.push(command);
+    }
+    JS_FreeValue(ctx, array);
+    JS_FreeValue(ctx, batch_value);
+    let batch = SliceCommandBatchV1 {
+        schema,
+        after_tick,
+        commands,
+    };
+    if batch.validate(published_tick).is_err() {
+        return false;
+    }
+    COMMANDS.extend(batch.commands.into_iter().map(command_for_sim));
+    true
 }
 
 /// Install `globalThis.strike` (intent ops; the SDK adds `__dispatch`).
-pub unsafe fn register(
-    ctx: *mut JSContext,
-    global: JSValue,
-    maps: &[alloc::string::String],
-) {
+pub unsafe fn register(ctx: *mut JSContext, global: JSValue, maps: &[alloc::string::String]) {
     let obj = JS_NewObject(ctx);
-    add_fn(ctx, obj, b"setPhase\0", js_set_phase, 1);
-    add_fn(ctx, obj, b"resetRound\0", js_reset_round, 0);
-    add_fn(ctx, obj, b"addWin\0", js_add_win, 0);
-    add_fn(ctx, obj, b"addLoss\0", js_add_loss, 0);
-    add_fn(ctx, obj, b"setBotCount\0", js_set_bot_count, 1);
-    add_fn(ctx, obj, b"configureWeapon\0", js_configure_weapon, 1);
-    add_fn(ctx, obj, b"configureBots\0", js_configure_bots, 1);
     add_fn(ctx, obj, b"loadMap\0", js_load_map, 1);
     add_fn(ctx, obj, b"toMenu\0", js_to_menu, 0);
     // The cooked-map catalogue (menu hosts): strike.maps = ["de_dust2", …].
@@ -261,13 +266,33 @@ unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
     let player = JS_NewObject(ctx);
     set_val(ctx, player, b"hp\0", JS_NewInt32(ctx, facts.player.hp));
     set_val(ctx, player, b"alive\0", JS_NewBool(ctx, facts.player.alive));
-    set_val(ctx, player, b"speedQ\0", JS_NewInt32(ctx, facts.player.speed_q));
+    set_val(
+        ctx,
+        player,
+        b"speedQ\0",
+        JS_NewInt32(ctx, facts.player.speed_q),
+    );
     set_val(ctx, o, b"player\0", player);
 
     let weapon = JS_NewObject(ctx);
-    set_val(ctx, weapon, b"ammo\0", JS_NewInt32(ctx, facts.weapon.ammo as i32));
-    set_val(ctx, weapon, b"reserve\0", JS_NewInt32(ctx, facts.weapon.reserve as i32));
-    set_val(ctx, weapon, b"reloading\0", JS_NewBool(ctx, facts.weapon.reloading));
+    set_val(
+        ctx,
+        weapon,
+        b"ammo\0",
+        JS_NewInt32(ctx, facts.weapon.ammo as i32),
+    );
+    set_val(
+        ctx,
+        weapon,
+        b"reserve\0",
+        JS_NewInt32(ctx, facts.weapon.reserve as i32),
+    );
+    set_val(
+        ctx,
+        weapon,
+        b"reloading\0",
+        JS_NewBool(ctx, facts.weapon.reloading),
+    );
     set_val(
         ctx,
         weapon,
@@ -277,27 +302,87 @@ unsafe fn build_state(ctx: *mut JSContext, sim: &StrikeSim) -> JSValue {
     set_val(ctx, o, b"weapon\0", weapon);
 
     let targets = JS_NewObject(ctx);
-    set_val(ctx, targets, b"alive\0", JS_NewInt32(ctx, facts.targets.alive as i32));
-    set_val(ctx, targets, b"total\0", JS_NewInt32(ctx, facts.targets.total as i32));
+    set_val(
+        ctx,
+        targets,
+        b"alive\0",
+        JS_NewInt32(ctx, facts.targets.alive as i32),
+    );
+    set_val(
+        ctx,
+        targets,
+        b"total\0",
+        JS_NewInt32(ctx, facts.targets.total as i32),
+    );
     set_val(ctx, o, b"targets\0", targets);
 
     let score = JS_NewObject(ctx);
-    set_val(ctx, score, b"wins\0", JS_NewInt32(ctx, facts.score.wins as i32));
-    set_val(ctx, score, b"losses\0", JS_NewInt32(ctx, facts.score.losses as i32));
+    set_val(
+        ctx,
+        score,
+        b"wins\0",
+        JS_NewInt32(ctx, facts.score.wins as i32),
+    );
+    set_val(
+        ctx,
+        score,
+        b"losses\0",
+        JS_NewInt32(ctx, facts.score.losses as i32),
+    );
     set_val(ctx, o, b"score\0", score);
 
     // Temporary aliases consumed by the imported HUD during migration.
     set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, facts.player.hp));
     set_val(ctx, o, b"alive\0", JS_NewBool(ctx, facts.player.alive));
-    set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, facts.weapon.ammo as i32));
-    set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, facts.weapon.reserve as i32));
-    set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, facts.weapon.reloading));
-    set_val(ctx, o, b"reloadFrac\0", JS_NewFloat64(ctx, sim.reload_frac() as f64));
-    set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, facts.targets.alive as i32));
-    set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, facts.targets.total as i32));
+    set_val(
+        ctx,
+        o,
+        b"ammo\0",
+        JS_NewInt32(ctx, facts.weapon.ammo as i32),
+    );
+    set_val(
+        ctx,
+        o,
+        b"reserve\0",
+        JS_NewInt32(ctx, facts.weapon.reserve as i32),
+    );
+    set_val(
+        ctx,
+        o,
+        b"reloading\0",
+        JS_NewBool(ctx, facts.weapon.reloading),
+    );
+    set_val(
+        ctx,
+        o,
+        b"reloadFrac\0",
+        JS_NewFloat64(ctx, sim.reload_frac() as f64),
+    );
+    set_val(
+        ctx,
+        o,
+        b"aliveBots\0",
+        JS_NewInt32(ctx, facts.targets.alive as i32),
+    );
+    set_val(
+        ctx,
+        o,
+        b"totalBots\0",
+        JS_NewInt32(ctx, facts.targets.total as i32),
+    );
     set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, facts.score.wins as i32));
-    set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, facts.score.losses as i32));
-    set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, sim.ground_speed() as f64));
+    set_val(
+        ctx,
+        o,
+        b"losses\0",
+        JS_NewInt32(ctx, facts.score.losses as i32),
+    );
+    set_val(
+        ctx,
+        o,
+        b"speed\0",
+        JS_NewFloat64(ctx, sim.ground_speed() as f64),
+    );
     o
 }
 

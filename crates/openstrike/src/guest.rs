@@ -13,27 +13,24 @@
 //!   game.tick() → __dispatch(state, events) → frame(buttons) → ui.tick()
 //!   → drain commands into the game.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use anyhow::{Context, Result, anyhow};
-use pocket3d::gpu::{Gpu, OffscreenTarget};
 use pocket_mod::Guest;
 use pocket_mod::qjs::{Array, CatchResultExt, Function, Object};
 use pocket_ui_wgpu::{Blit, UiRenderer, UiSurface};
+use pocket3d::gpu::{Gpu, OffscreenTarget};
 
-use openstrike_core::SlicePhaseV1;
-use openstrike_core::MAX_EVENTS_V1;
+use openstrike_core::{
+    MAX_EVENTS_V1, SliceCommandBatchV1, SliceCommandV1, SlicePhaseV1, TargetConfigV1,
+    WeaponConfigV1,
+};
 
-use crate::bot::BotConfig;
-use crate::game::{Command, GameEvent, OpenStrike, Phase};
-use crate::weapon::WeaponConfig;
+use crate::game::{GameEvent, OpenStrike};
 
 pub struct StrikeGuest {
     guest: Guest,
     ui: UiSurface,
-    commands: Rc<RefCell<Vec<Command>>>,
     /// Logical UI size (the core's viewport).
     ui_size: (u32, u32),
     gfx: Option<OverlayGfx>,
@@ -86,12 +83,13 @@ impl StrikeGuest {
         let guest = Guest::new()?;
         ui.mount(&guest)?;
 
-        let commands: Rc<RefCell<Vec<Command>>> = Rc::new(RefCell::new(Vec::new()));
-        mount_strike(&guest, &commands)?;
+        mount_strike(&guest)?;
 
         guest.eval("openstrike", &bundle)?;
         if !guest.has_frame() {
-            return Err(anyhow!("bundle evaluated but installed no frame() — HUD missing?"));
+            return Err(anyhow!(
+                "bundle evaluated but installed no frame() — HUD missing?"
+            ));
         }
         log::info!(
             "guest: booted {} ({} bytes js) at {}x{}",
@@ -100,7 +98,12 @@ impl StrikeGuest {
             ui_size.0,
             ui_size.1
         );
-        Ok(StrikeGuest { guest, ui, commands, ui_size, gfx: None })
+        Ok(StrikeGuest {
+            guest,
+            ui,
+            ui_size,
+            gfx: None,
+        })
     }
 
     /// One guest turn for one game tick.
@@ -115,7 +118,10 @@ impl StrikeGuest {
             ));
         }
         self.guest.with(|ctx| -> Result<()> {
-            let strike: Object = ctx.globals().get("strike").context("strike surface missing")?;
+            let strike: Object = ctx
+                .globals()
+                .get("strike")
+                .context("strike surface missing")?;
             let Ok(dispatch) = strike.get::<_, Function>("__dispatch") else {
                 return Ok(()); // no SDK loaded — state simply doesn't flow
             };
@@ -132,10 +138,34 @@ impl StrikeGuest {
         })?;
         self.guest.frame(0)?;
         self.ui.tick();
-        for cmd in self.commands.borrow_mut().drain(..) {
-            game.apply(cmd);
+        let batch = self.take_commands(game.tick)?;
+        batch.validate(game.tick).map_err(|error| {
+            anyhow!(
+                "invalid slice command batch at tick {}: {error:?}",
+                game.tick
+            )
+        })?;
+        for command in batch.commands {
+            game.sim.apply_slice_command(command, game.bot_walk_clip);
         }
         Ok(())
+    }
+
+    fn take_commands(&self, published_tick: u32) -> Result<SliceCommandBatchV1> {
+        self.guest.with(|ctx| -> Result<SliceCommandBatchV1> {
+            let strike: Object = ctx
+                .globals()
+                .get("strike")
+                .context("strike surface missing")?;
+            let take: Function = strike
+                .get("__takeCommands")
+                .context("strike.__takeCommands missing")?;
+            let batch: Object = take
+                .call((published_tick,))
+                .catch(&ctx)
+                .map_err(|error| anyhow!("strike.__takeCommands threw: {error}"))?;
+            parse_command_batch(&batch)
+        })
     }
 
     /// Render the HUD over `view` (`target_px` physical pixels): the UI draws
@@ -148,7 +178,11 @@ impl StrikeGuest {
         view: &wgpu::TextureView,
         target_format: wgpu::TextureFormat,
     ) -> Result<()> {
-        if self.gfx.as_ref().is_none_or(|g| g.target_format != target_format) {
+        if self
+            .gfx
+            .as_ref()
+            .is_none_or(|g| g.target_format != target_format)
+        {
             let offscreen = OffscreenTarget::new(gpu, self.ui_size.0, self.ui_size.1);
             let blit = Blit::new(
                 gpu,
@@ -195,10 +229,6 @@ impl StrikeGuest {
         }
         Ok(())
     }
-}
-
-fn parse_phase(name: &str) -> Option<Phase> {
-    SlicePhaseV1::from_wire_name(name).ok().map(Phase::from)
 }
 
 fn build_state<'js>(
@@ -268,7 +298,12 @@ fn build_event<'js>(
             o.set("weaponId", *weapon_id)?;
             o.set("ammo", *ammo)?;
         }
-        GameEvent::TargetHit { target_id, damage, hp, fatal } => {
+        GameEvent::TargetHit {
+            target_id,
+            damage,
+            hp,
+            fatal,
+        } => {
             o.set("type", "targetHit")?;
             o.set("targetId", *target_id)?;
             o.set("damage", *damage)?;
@@ -293,8 +328,9 @@ fn build_event<'js>(
     Ok(o)
 }
 
-/// Mount the `strike` namespace: intent ops that queue [`Command`]s.
-fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<()> {
+/// Mount only native lifecycle operations. Simulation intent returns through
+/// the SDK-installed `__takeCommands` batch after each guest turn.
+fn mount_strike(guest: &Guest) -> Result<()> {
     guest.mount("strike", |ctx, ns| {
         macro_rules! op {
             ($name:literal, $f:expr) => {
@@ -313,68 +349,48 @@ fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<(
             log::warn!("strike.toMenu: no menu on the desktop host (exit and rerun)");
         });
 
-        let q = commands.clone();
-        op!("setPhase", move |name: String| {
-            if let Some(p) = parse_phase(&name) {
-                q.borrow_mut().push(Command::SetPhase(p));
-            } else {
-                log::warn!("strike.setPhase: unknown phase '{name}'");
-            }
-        });
-
-        let q = commands.clone();
-        op!("resetRound", move || q.borrow_mut().push(Command::ResetRound));
-
-        let q = commands.clone();
-        op!("addWin", move || q.borrow_mut().push(Command::AddWin));
-
-        let q = commands.clone();
-        op!("addLoss", move || q.borrow_mut().push(Command::AddLoss));
-
-        let q = commands.clone();
-        op!("setBotCount", move |n: i32| {
-            q.borrow_mut().push(Command::SetBotCount(n.max(0) as usize))
-        });
-
-        let q = commands.clone();
-        op!("configureWeapon", move |o: Object| {
-            let d = WeaponConfig::default();
-            let cfg = WeaponConfig {
-                mag_size: get_u32(&o, "magSize", d.mag_size),
-                reserve: get_u32(&o, "reserve", d.reserve),
-                fire_interval: get_f32(&o, "fireInterval", d.fire_interval),
-                reload_time: get_f32(&o, "reloadTime", d.reload_time),
-                damage_body: get_i32(&o, "damageBody", d.damage_body),
-                damage_head: get_i32(&o, "damageHead", d.damage_head),
-            };
-            q.borrow_mut().push(Command::ConfigureWeapon(cfg));
-        });
-
-        let q = commands.clone();
-        op!("configureBots", move |o: Object| {
-            let d = BotConfig::default();
-            let cfg = BotConfig {
-                count: get_u32(&o, "count", d.count as u32) as usize,
-                speed: get_f32(&o, "speed", d.speed),
-                attack_interval: get_f32(&o, "attackInterval", d.attack_interval),
-                damage_min: get_i32(&o, "damageMin", d.damage_min),
-                damage_max: get_i32(&o, "damageMax", d.damage_max),
-            };
-            q.borrow_mut().push(Command::ConfigureBots(cfg));
-        });
-
         Ok(())
     })
 }
 
-fn get_f32(o: &Object, key: &str, default: f32) -> f32 {
-    o.get::<_, f64>(key).map(|v| v as f32).unwrap_or(default)
-}
-
-fn get_i32(o: &Object, key: &str, default: i32) -> i32 {
-    o.get::<_, i32>(key).unwrap_or(default)
-}
-
-fn get_u32(o: &Object, key: &str, default: u32) -> u32 {
-    o.get::<_, i32>(key).map(|v| v.max(0) as u32).unwrap_or(default)
+fn parse_command_batch(batch: &Object) -> Result<SliceCommandBatchV1> {
+    let commands: Array = batch
+        .get("commands")
+        .context("command batch commands missing")?;
+    let mut parsed = Vec::with_capacity(commands.len());
+    for index in 0..commands.len() {
+        let command: Object = commands.get(index)?;
+        let kind: String = command.get("type")?;
+        parsed.push(match kind.as_str() {
+            "setPhase" => SliceCommandV1::SetPhase(
+                SlicePhaseV1::from_wire_name(&command.get::<_, String>("phase")?)
+                    .map_err(|error| anyhow!("command {index} has invalid phase: {error:?}"))?,
+            ),
+            "resetRound" => SliceCommandV1::ResetRound,
+            "addWin" => SliceCommandV1::AddWin,
+            "addLoss" => SliceCommandV1::AddLoss,
+            "configureWeapon" => {
+                let config: Object = command.get("config")?;
+                SliceCommandV1::ConfigureWeapon(WeaponConfigV1 {
+                    magazine_capacity: config.get("magazineCapacity")?,
+                    reserve_capacity: config.get("reserveCapacity")?,
+                    fire_interval_ticks: config.get("fireIntervalTicks")?,
+                    reload_ticks: config.get("reloadTicks")?,
+                    damage: config.get("damage")?,
+                })
+            }
+            "configureTarget" => {
+                let config: Object = command.get("config")?;
+                SliceCommandV1::ConfigureTarget(TargetConfigV1 {
+                    health: config.get("health")?,
+                })
+            }
+            _ => return Err(anyhow!("command {index} has unknown type '{kind}'")),
+        });
+    }
+    Ok(SliceCommandBatchV1 {
+        schema: batch.get("schema")?,
+        after_tick: batch.get("afterTick")?,
+        commands: parsed,
+    })
 }

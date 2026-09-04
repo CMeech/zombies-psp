@@ -13,7 +13,7 @@ use pocket3d::winit::event::MouseButton;
 use pocket3d::winit::keyboard::KeyCode;
 
 use openstrike_core::StrikeSim;
-pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
+pub use openstrike_core::sim::{GameEvent, Phase, SimInput};
 
 use crate::weapon::build_rifle;
 
@@ -132,17 +132,6 @@ impl OpenStrike {
                 log::warn!("bot model not found (models/Soldier.glb); bots render as nothing")
             }
         }
-    }
-
-    pub fn reset_round(&mut self) {
-        let clip = self.bot_walk_clip;
-        self.sim.reset_round(clip);
-    }
-
-    /// Apply one guest command (drained after each guest turn).
-    pub fn apply(&mut self, cmd: Command) {
-        let clip = self.bot_walk_clip;
-        self.sim.apply(cmd, clip);
     }
 
     /// Full fixed-step game tick, from raw keyboard/mouse input.

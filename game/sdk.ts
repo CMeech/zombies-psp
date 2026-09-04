@@ -2,8 +2,8 @@
 // Host side: crates/openstrike/src/guest.rs.
 //
 // Per tick the host calls `strike.__dispatch(state, events)` (facts), then
-// the PocketJS frame turn runs (HUD). Commands issued here queue on the host
-// and apply after the guest turn — state read through this module is always
+// the PocketJS frame turn runs (HUD). Commands issued here join one V1 batch
+// that the host takes after the guest turn — state read through this module is always
 // the host's last-published snapshot, never a guess.
 
 export interface StrikeState {
@@ -45,20 +45,25 @@ export type StrikeEvent =
   | { type: "roundReset"; round: number };
 
 export interface WeaponConfig {
-  magSize: number;
-  reserve: number;
-  fireInterval: number;
-  reloadTime: number;
-  damageBody: number;
-  damageHead: number;
+  magazineCapacity: number;
+  reserveCapacity: number;
+  fireIntervalTicks: number;
+  reloadTicks: number;
+  damage: number;
 }
 
-export interface BotsConfig {
-  count: number;
-  speed: number;
-  attackInterval: number;
-  damageMin: number;
-  damageMax: number;
+export type SliceCommand =
+  | { type: "setPhase"; phase: "starting" | "live" | "won" | "lost" }
+  | { type: "resetRound" }
+  | { type: "addWin" }
+  | { type: "addLoss" }
+  | { type: "configureWeapon"; config: WeaponConfig }
+  | { type: "configureTarget"; config: { health: number } };
+
+export interface SliceCommandBatch {
+  schema: 1;
+  afterTick: number;
+  commands: SliceCommand[];
 }
 
 export interface NativeStrike {
@@ -66,14 +71,8 @@ export interface NativeStrike {
   maps?: string[];
   loadMap?(index: number): void;
   toMenu?(): void;
-  setPhase(phase: string): void;
-  resetRound(): void;
-  addWin(): void;
-  addLoss(): void;
-  setBotCount(n: number): void;
-  configureWeapon(cfg: WeaponConfig): void;
-  configureBots(cfg: BotsConfig): void;
   __dispatch?: (state: StrikeState, events: StrikeEvent[]) => void;
+  __takeCommands?: (afterTick: number) => SliceCommandBatch;
 }
 
 const native = (globalThis as { strike?: NativeStrike }).strike;
@@ -101,6 +100,7 @@ type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
 const handlers = new Map<string, Set<Handler>>();
 const tickHandlers = new Set<TickHandler>();
+let commands: SliceCommand[] = [];
 
 native.__dispatch = (state, events) => {
   current = state;
@@ -109,6 +109,12 @@ native.__dispatch = (state, events) => {
     if (set) for (const h of [...set]) h(e);
   }
   for (const h of [...tickHandlers]) h(state);
+};
+
+native.__takeCommands = (afterTick) => {
+  const batch = { schema: 1 as const, afterTick, commands };
+  commands = [];
+  return batch;
 };
 
 export const strike = {
@@ -129,18 +135,20 @@ export const strike = {
     return () => tickHandlers.delete(fn);
   },
 
-  // ---- intent (queued host-side, applied after this guest turn) ----------
+  // ---- intent (batched guest-side, taken once after this guest turn) ------
   /** Map names the host can load (empty on hosts that boot pre-loaded). */
   maps: (native.maps ?? []) as readonly string[],
   /** Ask the host to load a cooked map and start a round (menu hosts). */
   loadMap: (index: number) => native.loadMap?.(index),
   /** Leave the round and return to the main menu (menu hosts). */
   toMenu: () => native.toMenu?.(),
-  setPhase: (phase: StrikeState["phase"]) => native.setPhase(phase),
-  resetRound: () => native.resetRound(),
-  addWin: () => native.addWin(),
-  addLoss: () => native.addLoss(),
-  setBotCount: (n: number) => native.setBotCount(n),
-  configureWeapon: (cfg: WeaponConfig) => native.configureWeapon(cfg),
-  configureBots: (cfg: BotsConfig) => native.configureBots(cfg),
+  setPhase: (phase: "starting" | "live" | "won" | "lost") =>
+    commands.push({ type: "setPhase", phase }),
+  resetRound: () => commands.push({ type: "resetRound" }),
+  addWin: () => commands.push({ type: "addWin" }),
+  addLoss: () => commands.push({ type: "addLoss" }),
+  configureWeapon: (config: WeaponConfig) =>
+    commands.push({ type: "configureWeapon", config }),
+  configureTarget: (health: number) =>
+    commands.push({ type: "configureTarget", config: { health } }),
 };

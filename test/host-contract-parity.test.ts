@@ -68,4 +68,25 @@ describe("V1 host facts parity", () => {
       for (const event of eventNames) expect(encoder).toContain(event);
     }
   });
+
+  test("desktop and PSP consume the same validated V1 command batch vocabulary", async () => {
+    const sources = await Promise.all([
+      Bun.file(new URL("crates/openstrike/src/guest.rs", ROOT)).text(),
+      Bun.file(new URL("crates/openstrike-psp/src/strike.rs", ROOT)).text(),
+    ]);
+    const commandNames = [
+      "setPhase",
+      "resetRound",
+      "addWin",
+      "addLoss",
+      "configureWeapon",
+      "configureTarget",
+    ];
+    for (const source of sources) {
+      expect(source).toContain("__takeCommands");
+      expect(source).toContain("SliceCommandBatchV1");
+      expect(source).toContain(".validate(");
+      for (const command of commandNames) expect(source).toContain(command);
+    }
+  });
 });

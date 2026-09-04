@@ -164,6 +164,10 @@ unsafe fn dispatch_tick(state: &mut State, native_keys: u32, buttons: u32) -> bo
         }
     };
     if dispatched {
+        let published_tick = state.game.as_ref().map_or(0, |game| game.sim.tick);
+        if !strike::take_commands(state.context, state.global, published_tick) {
+            return false;
+        }
         drain_commands(state);
     }
     dispatched
@@ -363,6 +367,8 @@ unsafe extern "C" fn after_guest(context: *mut c_void) -> i32 {
     if context.cast::<JSContext>() != state.context {
         return 0;
     }
+    // Simulation commands are taken once per fixed tick in dispatch_tick.
+    // This post-frame drain handles direct host lifecycle intents from UI.
     drain_commands(state);
     1
 }

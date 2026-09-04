@@ -24,7 +24,7 @@ mod strike;
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
+use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(feature = "capture")]
 use psp::sys::CtrlButtons;
@@ -174,9 +174,13 @@ unsafe fn run() {
     }
 
     // Commands issued while no world exists (rules.ts configures the weapon
-    // and bots at eval time) are game CONFIGURATION: keep them and replay
+    // and target at eval time) are game CONFIGURATION: keep them and replay
     // into every freshly loaded simulation.
     let mut boot_cfg: Vec<Command> = Vec::new();
+    if !strike::take_commands(ctx, global, 0) {
+        host::halt("invalid initial slice command batch");
+    }
+    strike::drain(|command| boot_cfg.push(command));
     let mut game: Option<Game> = None;
     let mut menu_time: f64 = 0.0;
     if !AUTOSTART.is_empty() {
@@ -236,6 +240,10 @@ unsafe fn run() {
         #[cfg(feature = "bench")]
         let bench_after_js = bench_now();
         host::drain_jobs(rt);
+        let published_tick = game.as_ref().map_or(0, |g| g.sim.tick);
+        if !strike::take_commands(ctx, global, published_tick) {
+            log_exception(ctx);
+        }
         strike::drain(|cmd| match &mut game {
             Some(g) => g.sim.apply(cmd, 0),
             None => boot_cfg.push(cmd),
