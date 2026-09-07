@@ -3,6 +3,7 @@
 //   bun scripts/psp.ts                     # slice_test_room, debug profile
 //   bun scripts/psp.ts -r                  # release
 //   bun scripts/psp.ts --map de_inferno --bots 4
+//   bun scripts/psp.ts --bench --auto-rounds 10
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // The original slice room is always cooked from committed sources. Optional
@@ -24,6 +25,15 @@ function flag(name: string, def: string): string {
   return i !== -1 && argv[i + 1] ? argv[i + 1] : def;
 }
 const mapName = flag("map", "slice_test_room");
+const autoRounds = flag("auto-rounds", "0");
+if (!/^\d+$/.test(autoRounds)) {
+  console.error("--auto-rounds must be a non-negative integer");
+  process.exit(1);
+}
+if (Number(autoRounds) > 0 && !argv.includes("--bench")) {
+  console.error("--auto-rounds requires --bench");
+  process.exit(1);
+}
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
@@ -104,6 +114,7 @@ const env = {
   OPENSTRIKE_PSP_CAPTURE_INPUT: process.env.OPENSTRIKE_PSP_CAPTURE_INPUT ?? "",
   OPENSTRIKE_PSP_CAP_START: process.env.OPENSTRIKE_PSP_CAP_START ?? "",
   OPENSTRIKE_PSP_CAP_N: process.env.OPENSTRIKE_PSP_CAP_N ?? "",
+  OPENSTRIKE_PSP_BENCH_AUTO_ROUNDS: autoRounds,
 };
 
 const cargoArgs: string[] = [];

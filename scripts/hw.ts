@@ -3,7 +3,7 @@
 //   bun scripts/hw.ts                 # build + run slice_test_room
 //   bun scripts/hw.ts -r              # release profile
 //   bun scripts/hw.ts --bench         # frame-time + memory evidence
-//   bun scripts/hw.ts --bench --map slice_test_room
+//   bun scripts/hw.ts --bench --auto-rounds 10
 //   bun scripts/hw.ts --no-build      # just (re)load what's built
 //
 // Serves the EBOOT dir as host0:, then `reset` + `ldstart` the PRX through
@@ -33,6 +33,15 @@ function option(name: string, fallback: string): string {
   return value;
 }
 const mapName = option("--map", "slice_test_room");
+const autoRounds = option("--auto-rounds", "0");
+if (!/^\d+$/.test(autoRounds)) {
+  console.error("--auto-rounds must be a non-negative integer");
+  process.exit(1);
+}
+if (Number(autoRounds) > 0 && !bench) {
+  console.error("--auto-rounds requires --bench");
+  process.exit(1);
+}
 
 const usbhostfs = Bun.which("usbhostfs_pc");
 const pspsh = Bun.which("pspsh");
@@ -75,6 +84,8 @@ async function build(): Promise<boolean> {
     ...(bench ? ["--bench"] : []),
     "--map",
     mapName,
+    "--auto-rounds",
+    autoRounds,
   ];
   const res = await $`bun ${repo}scripts/psp.ts ${args}`.cwd(repo).nothrow();
   return res.exitCode === 0;
@@ -150,6 +161,7 @@ await load();
 // Tail bench windows as the device writes them over usbhostfs.
 if (bench) {
   let seen = 0;
+  let autoRoundsReported = false;
   setInterval(() => {
     if (!existsSync(benchPath)) return;
     const lines = readFileSync(benchPath, "utf8").trimEnd().split("\n").filter(Boolean);
@@ -174,6 +186,10 @@ if (bench) {
           `[bench] work ${w.avg_work_us}us (max ${w.max_work_us})  gpu ${w.avg_gpu_us}us (max ${w.max_gpu_us})  ` +
             `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}${memory}  → ~${fps} fps`,
         );
+        if (!autoRoundsReported && Number(autoRounds) > 0 && w.resets_completed >= Number(autoRounds)) {
+          console.log(`[validation] completed ${w.resets_completed} automatic round resets on the connected PSP`);
+          autoRoundsReported = true;
+        }
       } catch {
         // partial line; retry next poll
         break;

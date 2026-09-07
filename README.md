@@ -248,7 +248,7 @@ deterministic backend the byte-exact e2e goldens run on.</em></p>
 git submodule update --init          # pocket-stack/pocketjs + rust-psp + quickjs-rs
 bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
-bun scripts/hw.ts --bench            # PSPLINK frame, draw, memory, and reset metrics
+bun scripts/hw.ts --release --bench --auto-rounds 10 # repeatable PSP timing/memory/reset evidence
 bun scripts/e2e-psp.ts               # slice-room PPSSPP goldens (live/hit/complete)
 ```
 

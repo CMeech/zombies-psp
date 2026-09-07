@@ -26,7 +26,7 @@ use core::ffi::c_void;
 use libquickjs_sys::*;
 use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
-#[cfg(feature = "capture")]
+#[cfg(any(feature = "capture", feature = "bench"))]
 use psp::sys::CtrlButtons;
 #[cfg(feature = "capture")]
 use psp::sys::DisplayPixelFormat;
@@ -37,7 +37,7 @@ use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 
 use input::PadInput;
-use openstrike_core::StrikeSim;
+use openstrike_core::{Phase, StrikeSim};
 
 psp::module!("openstrike", 1, 1);
 
@@ -46,6 +46,9 @@ static APP_PAK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app.pak"));
 // Deterministic runs (e2e, bench) skip the menu and boot straight into this
 // map; empty = boot into the menu (the shipped behavior).
 static AUTOSTART: &str = env!("OPENSTRIKE_PSP_AUTOSTART");
+
+#[cfg(feature = "bench")]
+static BENCH_AUTO_ROUNDS: &str = env!("OPENSTRIKE_PSP_BENCH_AUTO_ROUNDS");
 
 #[cfg(feature = "capture")]
 static CAPTURE_INPUT: &str = env!("OPENSTRIKE_PSP_CAPTURE_INPUT");
@@ -198,15 +201,26 @@ unsafe fn run() {
     let mut frame_count: u32 = 0;
     #[cfg(feature = "bench")]
     let mut bench = Bench::new();
+    #[cfg(feature = "bench")]
+    let bench_auto_rounds = BENCH_AUTO_ROUNDS.parse::<u32>().unwrap_or(0);
     loop {
         #[cfg(feature = "bench")]
         let bench_t0 = bench_now();
         sys::sceCtrlReadBufferPositive(&mut pad_data, 1);
-        #[cfg_attr(not(feature = "capture"), allow(unused_mut))]
+        #[cfg_attr(not(any(feature = "capture", feature = "bench")), allow(unused_mut))]
         let mut sample = (pad_data.buttons, pad_data.lx, pad_data.ly);
         #[cfg(feature = "capture")]
         {
             sample = capture_sample(frame_count, sample);
+        }
+        #[cfg(feature = "bench")]
+        {
+            let should_fire = game.as_ref().is_some_and(|g| {
+                g.sim.round.saturating_sub(1) < bench_auto_rounds
+                    && g.sim.phase == Phase::Live
+                    && g.sim.target.is_some_and(|target| target.alive())
+            });
+            sample.0.set(CtrlButtons::RTRIGGER, should_fire);
         }
         let tick = pad.map(sample.0, sample.1, sample.2, DT);
         let mask = sample.0.bits() as i32;

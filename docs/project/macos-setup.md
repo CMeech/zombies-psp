@@ -204,14 +204,15 @@ host tools (`usbhostfs_pc` and `pspsh`), launch PSPLINK on the handheld, then
 run:
 
 ```sh
-bun scripts/hw.ts --release --bench --map slice_test_room
+bun scripts/hw.ts --release --bench --map slice_test_room --auto-rounds 10
 ```
 
 Every 300 frames the terminal reports CPU/GPU timing, segment timing, draw
 counts, arena bump/capacity, remaining PSP user memory, largest free block, and
-completed resets. Exercise ten complete rounds before accepting the arena
-stability result. Record the PSP model and observed controls separately; the
-script does not turn emulator output into a hardware claim.
+completed resets. `--auto-rounds 10` fires only while the slice target is live
+and stops after ten resets, making the arena stability check repeatable. Record
+the PSP model and run a separate manual controls pass; the script does not turn
+emulator output into a hardware claim.
 
 ## New terminal?
 

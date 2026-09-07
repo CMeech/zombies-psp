@@ -457,9 +457,11 @@ emulator result is compatibility evidence only.
 
 The PSP bench stream now includes the active round and completed-reset count,
 arena initialization/capacity/bump/tail values, and current total/largest free
-user-memory blocks. `scripts/hw.ts --bench --map slice_test_room` prints those
-memory and reset values alongside the existing timing and draw metrics. A
-12-second PPSSPP smoke produced parseable 300-frame records, validating the
+user-memory blocks. `scripts/hw.ts --release --bench --map slice_test_room
+--auto-rounds 10` prints those values alongside the timing and draw metrics.
+The bench-only automatic input fires while the target is live and stops after
+ten resets; controls sanity still requires a separate manual hardware pass. A
+PPSSPP smoke produced parseable 300-frame records, validating the
 instrumentation path only; its timing and memory values are not hardware
 evidence. The local host does not currently have `usbhostfs_pc` or `pspsh`, so
 no physical PSP run was performed.
