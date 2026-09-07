@@ -1,9 +1,9 @@
 // Run OpenStrike on a REAL PSP over USB (PSPLINK + usbhostfs_pc).
 //
-//   bun scripts/hw.ts                 # build + run de_dust2
+//   bun scripts/hw.ts                 # build + run slice_test_room
 //   bun scripts/hw.ts -r              # release profile
-//   bun scripts/hw.ts --bench         # bake the frame-time probe; numbers
-//                                     # stream into this terminal
+//   bun scripts/hw.ts --bench         # frame-time + memory evidence
+//   bun scripts/hw.ts --bench --map slice_test_room
 //   bun scripts/hw.ts --no-build      # just (re)load what's built
 //
 // Serves the EBOOT dir as host0:, then `reset` + `ldstart` the PRX through
@@ -22,6 +22,17 @@ const release = flags.has("-r") || flags.has("--release");
 const bench = flags.has("--bench");
 const noBuild = flags.has("--no-build");
 const profile = release ? "release" : "debug";
+function option(name: string, fallback: string): string {
+  const index = argv.indexOf(name);
+  if (index === -1) return fallback;
+  const value = argv[index + 1];
+  if (!value || value.startsWith("-")) {
+    console.error(`${name} requires a value`);
+    process.exit(1);
+  }
+  return value;
+}
+const mapName = option("--map", "slice_test_room");
 
 const usbhostfs = Bun.which("usbhostfs_pc");
 const pspsh = Bun.which("pspsh");
@@ -59,9 +70,13 @@ async function findBasePort(start: number): Promise<number> {
 
 async function build(): Promise<boolean> {
   if (noBuild) return existsSync(`${targetDir}/openstrike-psp.prx`);
-  const args = [...(release ? ["-r"] : []), ...(bench ? ["--bench"] : [])];
-  const extra = argv.filter((a) => !a.startsWith("-"));
-  const res = await $`bun ${repo}scripts/psp.ts ${args} ${extra}`.cwd(repo).nothrow();
+  const args = [
+    ...(release ? ["-r"] : []),
+    ...(bench ? ["--bench"] : []),
+    "--map",
+    mapName,
+  ];
+  const res = await $`bun ${repo}scripts/psp.ts ${args}`.cwd(repo).nothrow();
   return res.exitCode === 0;
 }
 
@@ -146,9 +161,18 @@ if (bench) {
           w.avg_sim_us !== undefined
             ? `  [sim ${w.avg_sim_us} dispatch ${w.avg_dispatch_us} js ${w.avg_js_us} ui ${w.avg_ui_us}]`
             : "";
+        const mib = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2);
+        const arenaPct = w.arena_capacity_bytes > 0
+          ? ((100 * w.arena_bump_bytes) / w.arena_capacity_bytes).toFixed(1)
+          : "n/a";
+        const memory = w.system_total_free_bytes !== undefined
+          ? `  [arena ${mib(w.arena_bump_bytes)}/${mib(w.arena_capacity_bytes)} MiB (${arenaPct}%)` +
+            `; system free ${mib(w.system_total_free_bytes)} MiB` +
+            `; largest ${mib(w.system_max_free_bytes)} MiB; resets ${w.resets_completed}]`
+          : "";
         console.log(
           `[bench] work ${w.avg_work_us}us (max ${w.max_work_us})  gpu ${w.avg_gpu_us}us (max ${w.max_gpu_us})  ` +
-            `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}  → ~${fps} fps`,
+            `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}${memory}  → ~${fps} fps`,
         );
       } catch {
         // partial line; retry next poll

@@ -402,7 +402,7 @@ recorded measurements and a documentation update rather than silent relaxation.
 
 ## Milestone 4 implementation progress
 
-As of 2026-09-04:
+As of 2026-09-07:
 
 - Shared `no_std` V1 facts, events, commands, limits, and validation exist in
   `openstrike-core`.
@@ -454,3 +454,12 @@ goldens pinned to PPSSPP commit
 byte-for-byte. The immediate next action is native interactive verification.
 Physical PSP-1000 evidence remains required for hardware budget claims; the
 emulator result is compatibility evidence only.
+
+The PSP bench stream now includes the active round and completed-reset count,
+arena initialization/capacity/bump/tail values, and current total/largest free
+user-memory blocks. `scripts/hw.ts --bench --map slice_test_room` prints those
+memory and reset values alongside the existing timing and draw metrics. A
+12-second PPSSPP smoke produced parseable 300-frame records, validating the
+instrumentation path only; its timing and memory values are not hardware
+evidence. The local host does not currently have `usbhostfs_pc` or `pspsh`, so
+no physical PSP run was performed.

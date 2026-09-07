@@ -308,9 +308,9 @@ unsafe fn run() {
 
         #[cfg(feature = "bench")]
         {
-            let (faces, tris) = match &game {
-                Some(g) => (g.world.last_faces, g.world.last_tris),
-                None => (0, 0),
+            let (faces, tris, round) = match &game {
+                Some(g) => (g.world.last_faces, g.world.last_tris, g.sim.round),
+                None => (0, 0, 0),
             };
             bench.record(
                 frame_count,
@@ -326,6 +326,7 @@ unsafe fn run() {
                 bench_after_present,
                 faces,
                 tris,
+                round,
             );
         }
 
@@ -423,6 +424,7 @@ impl Bench {
         after_present: u64,
         faces: u32,
         tris: u32,
+        round: u32,
     ) {
         let now = bench_now();
         let mut prev = t0;
@@ -482,10 +484,14 @@ impl Bench {
         let n = self.frames as u64;
         self.window += 1;
         let arena = unsafe { pocketjs_psp::arena::stats() };
+        let system_total_free = unsafe { sys::sceKernelTotalFreeMemSize() };
+        let system_max_free = unsafe { sys::sceKernelMaxFreeMemSize() };
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}]}}\n",
+            "{{\"window\":{},\"frames\":{},\"round\":{},\"resets_completed\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"arena_init_free_bytes\":{},\"system_total_free_bytes\":{},\"system_max_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}]}}\n",
             self.window,
             n,
+            round,
+            round.saturating_sub(1),
             self.work_sum / n,
             self.max_work,
             self.gpu_sum / n,
@@ -499,6 +505,9 @@ impl Bench {
             arena.capacity_bytes,
             arena.bump_bytes,
             arena.tail_free_bytes,
+            arena.init_free_bytes,
+            system_total_free,
+            system_max_free,
             self.max_segs[0],
             self.max_segs[1],
             self.max_segs[2],

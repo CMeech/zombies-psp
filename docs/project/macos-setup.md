@@ -199,6 +199,20 @@ PPSSPP commit recorded in `test/goldens-psp/PPSSPP-COMMIT.txt`; a different
 revision can still provide capture-liveness evidence but must not overwrite the
 goldens merely to remove a mismatch.
 
+For physical PSP-1000 timing, memory, and reset evidence, install the PSPLINK
+host tools (`usbhostfs_pc` and `pspsh`), launch PSPLINK on the handheld, then
+run:
+
+```sh
+bun scripts/hw.ts --release --bench --map slice_test_room
+```
+
+Every 300 frames the terminal reports CPU/GPU timing, segment timing, draw
+counts, arena bump/capacity, remaining PSP user memory, largest free block, and
+completed resets. Exercise ten complete rounds before accepting the arena
+stability result. Record the PSP model and observed controls separately; the
+script does not turn emulator output into a hardware claim.
+
 ## New terminal?
 
 Exports disappear when terminal closes. Run again:
